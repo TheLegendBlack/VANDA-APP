@@ -443,6 +443,10 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // --- Reviews pagination
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  const [allReviewsLoaded, setAllReviewsLoaded] = useState(false);
+
   const carouselRef = useRef<ScrollView>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -549,6 +553,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         const resp = await getPropertyReviews(propertyId, { limit: 10, offset: 0 });
         if (!isMounted) return;
         setReviews(resp.items);
+        setAllReviewsLoaded(resp.items.length >= resp.total);
       } catch (e: any) {
         console.error(e);
         if (isMounted) setError(e?.message || 'Impossible de charger les détails du bien.');
@@ -620,6 +625,25 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
   const formatLongDate = (date: Date) => {
     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const formatRelativeDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays < 1) return "Aujourd'hui";
+    if (diffDays === 1) return 'Hier';
+    if (diffDays < 7) return `Il y a ${diffDays} jours`;
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks === 1) return 'Il y a 1 semaine';
+    if (diffWeeks < 5) return `Il y a ${diffWeeks} semaines`;
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths === 1) return 'Il y a 1 mois';
+    if (diffMonths < 12) return `Il y a ${diffMonths} mois`;
+    const diffYears = Math.floor(diffDays / 365);
+    if (diffYears === 1) return 'Il y a 1 an';
+    return `Il y a ${diffYears} ans`;
   };
 
   // ===============================
@@ -772,6 +796,25 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       else await removeFavorite(propertyId);
     } catch {
       setIsFavorite(!newVal);
+    }
+  };
+
+  // ===============================
+  // LOAD MORE REVIEWS
+  // ===============================
+  const loadMoreReviews = async () => {
+    if (loadingMoreReviews || allReviewsLoaded) return;
+    try {
+      setLoadingMoreReviews(true);
+      const resp = await getPropertyReviews(propertyId, { limit: 10, offset: reviews.length });
+      setReviews(prev => [...prev, ...resp.items]);
+      if (reviews.length + resp.items.length >= resp.total) {
+        setAllReviewsLoaded(true);
+      }
+    } catch (e) {
+      console.error('Erreur chargement reviews:', e);
+    } finally {
+      setLoadingMoreReviews(false);
     }
   };
 
@@ -1104,7 +1147,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               </View>
               <View style={styles.hostDetails}>
                 <Text style={styles.hostName}>Hôte : {property.host.firstName} {property.host.lastName}</Text>
-                <Text style={styles.hostExperience}>Hôte sur VANDA</Text>
+                <Text style={styles.hostExperience}>
+                  {property.host.experience ? `${property.host.experience} d'expérience en tant qu'hôte` : 'Hôte sur VANDA'}
+                </Text>
               </View>
             </View>
             <ChevronRightIcon size={20} color="#fbbf24" />
@@ -1118,10 +1163,11 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
             <View style={styles.amenitiesList}>
               {(property.equipments || []).slice(0, 6).map((eq: EquipmentInfo) => {
                 const IconComp = getEquipmentIcon(eq.name);
+                const isAvailable = eq.available !== false;
                 return (
                   <View key={eq.id} style={styles.amenityItem}>
-                    <IconComp size={24} color="#fbbf24" />
-                    <Text style={styles.amenityName}>{eq.name}</Text>
+                    <IconComp size={24} color={isAvailable ? '#fbbf24' : '#78350f'} />
+                    <Text style={[styles.amenityName, !isAvailable && styles.amenityNameDisabled]}>{eq.name}</Text>
                   </View>
                 );
               })}
@@ -1166,6 +1212,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                     {[...Array(5)].map((_, i) => (
                       <StarIcon key={i} size={14} color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'} filled={i < (review.overallRating ?? 0)} />
                     ))}
+                    <Text style={styles.reviewDate}>· {formatRelativeDate(review.createdAt)}</Text>
                   </View>
                   <Text style={styles.reviewComment} numberOfLines={5}>{review.comment}</Text>
                 </TouchableOpacity>
@@ -1185,10 +1232,43 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
           <View style={styles.rulesSection}>
             <Text style={styles.sectionTitle}>Règlement intérieur</Text>
             <View style={styles.rulesList}>
+              {/* Check-in/Check-out if structured */}
+              {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).checkIn && (
+                <View style={styles.ruleItem}>
+                  <ClockIcon size={18} color="#f59e0b" />
+                  <Text style={styles.ruleText}>Arrivée à partir de {(property.houseRules as any).checkIn}</Text>
+                </View>
+              )}
+              {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).checkOut && (
+                <View style={styles.ruleItem}>
+                  <ClockIcon size={18} color="#f59e0b" />
+                  <Text style={styles.ruleText}>Départ avant {(property.houseRules as any).checkOut}</Text>
+                </View>
+              )}
               <View style={styles.ruleItem}>
                 <UsersIcon size={18} color="#f59e0b" />
                 <Text style={styles.ruleText}>{property.maxGuests} voyageurs maximum</Text>
               </View>
+              {/* Structured rules: smoking, pets, parties */}
+              {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).smoking === false && (
+                <View style={styles.ruleItem}>
+                  <XIcon size={18} color="#ef4444" />
+                  <Text style={styles.ruleText}>Non fumeur</Text>
+                </View>
+              )}
+              {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).pets === false && (
+                <View style={styles.ruleItem}>
+                  <XIcon size={18} color="#ef4444" />
+                  <Text style={styles.ruleText}>Animaux non autorisés</Text>
+                </View>
+              )}
+              {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).parties === false && (
+                <View style={styles.ruleItem}>
+                  <XIcon size={18} color="#ef4444" />
+                  <Text style={styles.ruleText}>Fêtes interdites</Text>
+                </View>
+              )}
+              {/* Fallback: string or array houseRules from backend */}
               {property.houseRules && typeof property.houseRules === 'string' && (
                 <View style={styles.ruleItem}>
                   <CheckCircleIcon size={18} color="#f59e0b" />
@@ -1673,10 +1753,27 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 </View>
                 <View style={styles.reviewStars}>
                   {[...Array(5)].map((_, i) => <StarIcon key={i} size={14} color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'} filled={i < (review.overallRating ?? 0)} />)}
+                  <Text style={styles.reviewDate}>· {formatRelativeDate(review.createdAt)}</Text>
                 </View>
                 <Text style={styles.reviewModalComment}>{review.comment}</Text>
               </View>
             ))}
+            {!allReviewsLoaded && (ratings?.count ?? 0) > reviews.length && (
+              <TouchableOpacity
+                style={[styles.showAllReviewsBtn, loadingMoreReviews && { opacity: 0.6 }]}
+                onPress={loadMoreReviews}
+                disabled={loadingMoreReviews}
+                activeOpacity={0.8}
+              >
+                {loadingMoreReviews ? (
+                  <ActivityIndicator size="small" color="#fbbf24" />
+                ) : (
+                  <Text style={styles.showAllReviewsBtnText}>
+                    Charger plus de commentaires ({reviews.length}/{ratings?.count})
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -1695,10 +1792,11 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
             <Text style={styles.amenitiesModalSubtitle}>Ce logement propose {property.equipments?.length ?? 0} équipements</Text>
             {(property.equipments || []).map((eq: EquipmentInfo) => {
               const IconComp = getEquipmentIcon(eq.name);
+              const isAvailable = eq.available !== false;
               return (
                 <View key={eq.id} style={styles.amenityModalItem}>
-                  <View style={styles.amenityModalIconBox}><IconComp size={24} color="#fbbf24" /></View>
-                  <Text style={styles.amenityModalName}>{eq.name}</Text>
+                  <View style={styles.amenityModalIconBox}><IconComp size={24} color={isAvailable ? '#fbbf24' : '#78350f'} /></View>
+                  <Text style={[styles.amenityModalName, !isAvailable && styles.amenityModalNameDisabled]}>{eq.name}</Text>
                 </View>
               );
             })}
@@ -1760,18 +1858,46 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <View style={styles.hostInfoItem}>
                     <ClockIcon size={20} color="#fbbf24" />
                     <View style={styles.hostInfoContent}>
-                      <Text style={styles.hostInfoTitle}>Hôte sur VANDA</Text>
-                      <Text style={styles.hostInfoSubtitle}>Membre actif</Text>
+                      <Text style={styles.hostInfoTitle}>Taux de réponse : {property.host.responseRate ?? 98}%</Text>
+                      <Text style={styles.hostInfoSubtitle}>Répond généralement en {property.host.responseTime ?? "moins d'une heure"}</Text>
                     </View>
                   </View>
                   <View style={styles.hostInfoItem}>
                     <GlobeIcon size={20} color="#fbbf24" />
                     <View style={styles.hostInfoContent}>
                       <Text style={styles.hostInfoTitle}>Langues</Text>
-                      <Text style={styles.hostInfoSubtitle}>Français, Lingala</Text>
+                      <Text style={styles.hostInfoSubtitle}>{Array.isArray(property.host.languages) ? property.host.languages.join(', ') : 'Français, Lingala'}</Text>
                     </View>
                   </View>
                 </View>
+
+                {/* À propos */}
+                {property.host.about ? (
+                  <View style={styles.hostAboutSection}>
+                    <Text style={styles.hostAboutTitle}>À propos de {property.host.firstName}</Text>
+                    <Text style={styles.hostAboutText}>{property.host.about}</Text>
+                  </View>
+                ) : null}
+
+                {/* Annonces de l'hôte */}
+                {Array.isArray(property.host.listings) && property.host.listings.length > 0 && (
+                  <View style={styles.hostListingsSection}>
+                    <Text style={styles.hostListingsTitle}>Annonces publiées par {property.host.firstName}</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hostListingsScroll}>
+                      {property.host.listings.map((listing: any) => (
+                        <TouchableOpacity key={listing.id} style={styles.hostListingCard} activeOpacity={0.9}>
+                          {listing.image ? <Image source={{ uri: listing.image }} style={styles.hostListingImage} /> : <View style={[styles.hostListingImage, { backgroundColor: 'rgba(120,53,15,0.5)' }]} />}
+                          <Text style={styles.hostListingTitle} numberOfLines={2}>{listing.title}</Text>
+                          <View style={styles.hostListingRating}>
+                            <StarIcon size={12} color="#facc15" filled />
+                            <Text style={styles.hostListingRatingText}>{listing.rating?.toFixed(2) ?? '-'}</Text>
+                            <Text style={styles.hostListingReviews}>· {listing.reviewsCount ?? 0} avis</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
 
                 <TouchableOpacity style={styles.contactHostBtn} activeOpacity={0.9}>
                   <MessageCircleIcon size={20} color="#78350f" />
