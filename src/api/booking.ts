@@ -7,6 +7,8 @@ export type BookingStatus =
   | 'cancelled'
   | 'completed';
 
+export type RentalType = 'short_term' | 'long_term';
+
 export type Booking = {
   id: string;
   propertyId: string;
@@ -14,7 +16,7 @@ export type Booking = {
   checkInDate: string;
   checkOutDate: string;
   guestsCount: number;
-  rentalType: 'short_term' | 'long_term';
+  rentalType: RentalType;
   totalAmount: number;
   status: BookingStatus;
   specialRequests?: string | null;
@@ -29,17 +31,20 @@ export type BookingProperty = {
   title: string;
   address: string | null;
   city: string | null;
+  accessInstructions?: string | null;
 };
 
 export type BookingWithProperty = Booking & {
   property: BookingProperty | null;
+  phase?: 'in_progress' | 'upcoming' | null;
 };
 
 export type CreateBookingPayload = {
   propertyId: string;
-  checkInDate: string; // "2025-12-24"
-  checkOutDate: string; // "2025-12-28"
+  checkInDate: string;
+  checkOutDate: string;
   guestsCount: number;
+  rentalType?: RentalType;
   specialRequests?: string | null;
 };
 
@@ -68,7 +73,7 @@ export async function createBooking(
       data?.error ??
       (res.status === 409
         ? 'Ce créneau est déjà réservé.'
-        : 'Impossible d’enregistrer la réservation.');
+        : 'Impossible d\'enregistrer la réservation.');
     throw new Error(message);
   }
 

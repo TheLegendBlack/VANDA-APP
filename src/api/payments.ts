@@ -2,11 +2,6 @@
 
 import { API_BASE_URL } from './config';
 
-/**
- * Statuts possibles côté backend.
- * Dans ton code tu utilises surtout "pending" | "success" | "failed",
- * mais on laisse ouvert à d'autres valeurs éventuelles.
- */
 export type PaymentStatus =
   | 'pending'
   | 'success'
@@ -14,39 +9,27 @@ export type PaymentStatus =
   | 'expired'
   | 'cancelled';
 
-/**
- * Shape d’un paiement tel que renvoyé par ton backend.
- * (Adapté à ton modèle Prisma / routes payments.js)
- */
 export type Payment = {
   id: string;
   bookingId: string;
-  provider: string;        // ex: "mtn_momo", "airtel_momo"
-  amount: number;          // en XAF
-  currency: string;        // "XAF"
-  externalId: string;      // Idempotency key / reference app
-  payerMsisdn: string;     // numéro formaté
-  reason: string | null;   // "Booking xxx" etc.
-  status: PaymentStatus;   // "pending" | "success" | "failed"...
-  providerRef: string | null; // Référence MTN / Airtel (X-Reference-Id)
+  provider: string;
+  amount: number;
+  currency: string;
+  externalId: string;
+  payerMsisdn: string;
+  reason: string | null;
+  status: PaymentStatus;
+  providerRef: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-/**
- * Payload attendu par POST /payments
- * (voir routes/payments.js)
- */
 export type CreatePaymentPayload = {
   bookingId: string;
-  payerMsisdn: string;         // juste les chiffres côté front, le back nettoie aussi
-  provider?: string;           // "mtn_momo" | "airtel_momo" ...
+  payerMsisdn: string;
+  provider?: string;
   reason?: string | null;
 };
-
-/* =========================
-   Helper de réponse JSON
-========================= */
 
 async function handleJsonResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
@@ -77,11 +60,6 @@ async function handleJsonResponse<T>(res: Response): Promise<T> {
   return data as T;
 }
 
-/* =========================
-   POST /payments
-   -> createPayment
-========================= */
-
 export async function createPayment(
   token: string,
   payload: CreatePaymentPayload
@@ -90,21 +68,14 @@ export async function createPayment(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // 🔐 JWT de ton AuthContext
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
   });
 
-  // Ton backend répond: { message: 'Paiement MTN initié.', data: payment }
   const json = await handleJsonResponse<{ message: string; data: Payment }>(res);
   return json.data;
 }
-
-/* =========================
-   GET /payments/:id
-   -> getPaymentById
-========================= */
 
 export async function getPaymentById(
   token: string,
