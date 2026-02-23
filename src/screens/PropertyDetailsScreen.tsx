@@ -2672,17 +2672,8 @@ const styles = StyleSheet.create({
   // Modal détail du prix
   priceDetailSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
   priceDetailSheetGradient: { paddingBottom: 32 },
-  priceDetailContent: { padding: 16, paddingTop: 0 },
-  priceDetailTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
-  priceDetailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  priceDetailLabel: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 15 },
-  priceDetailValue: { color: '#ffffff', fontSize: 15, fontWeight: '500' },
-  priceDetailDivider: { height: 1, backgroundColor: 'rgba(180, 83, 9, 0.3)', marginVertical: 16 },
-  priceDetailTotalLabel: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  priceDetailTotalValue: { color: '#fbbf24', fontSize: 20, fontWeight: '700' },
-  priceDetailDates: { marginTop: 8 },
-  priceDetailDatesTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  priceDetailDatesValue: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14 },
+  priceDetailSheetContent: { padding: 16, paddingTop: 0 },
+  priceDetailSheetTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
 
   // Modal paiement différé
   deferredSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
@@ -2720,8 +2711,6 @@ const styles = StyleSheet.create({
   reviewsCountText: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
   bookingSectionItem: { borderBottomWidth: 1, borderBottomColor: 'rgba(180, 83, 9, 0.3)', paddingBottom: 16, marginBottom: 16 },
   cancellationModalTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
-  priceDetailSheetContent: { padding: 16, paddingTop: 0 },
-  priceDetailSheetTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
   priceDetailTotalLabel: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
   priceDetailTotalValue2: { color: '#fbbf24', fontSize: 20, fontWeight: '700' },
   priceDetailDates: { marginTop: 8 },

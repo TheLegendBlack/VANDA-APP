@@ -29,6 +29,18 @@ export interface HostInfo {
   firstName: string;
   lastName: string;
   avatarUrl?: string | null;
+  experience?: string | null;
+  responseRate?: number | null;
+  responseTime?: string | null;
+  languages?: string[] | null;
+  about?: string | null;
+  listings?: Array<{
+    id: string;
+    title: string;
+    image?: string | null;
+    rating?: number | null;
+    reviewsCount?: number;
+  }> | null;
 }
 
 export interface PropertyRating {
@@ -40,6 +52,7 @@ export interface EquipmentInfo {
   id: string;
   name: string;
   category: string;
+  available?: boolean;
 }
 
 // DTO retourné par /properties/search et /properties/home
