@@ -1,23 +1,40 @@
 // src/screens/PropertyDetailsScreen.tsx
-// 100% ISO conversion from VandaPropertyDetails.tsx (web) with full backend integration
-
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions,
-  Animated, StatusBar, Image, Modal, NativeSyntheticEvent, NativeScrollEvent,
-  TextInput, ActivityIndicator, Alert,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  Animated,
+  StatusBar,
+  Image,
+  Modal,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle, Rect, Defs, LinearGradient as SvgLinearGradient, Stop, G, Line } from 'react-native-svg';
+import Svg, { Path, Circle, Rect, G, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import {
-  getPropertyById, PropertyDetail, PropertyPhoto, EquipmentInfo,
-  getPropertyAvailability, AvailabilityDay, AvailabilityResponse,
+  getPropertyById,
+  PropertyDetail,
+  PropertyPhoto,
+  EquipmentInfo,
+  getPropertyAvailability,
+  AvailabilityDay,
 } from '../api/properties';
 import {
-  getPropertyRatings, getPropertyReviews, PropertyReview, PropertyRatings,
+  getPropertyRatings,
+  getPropertyReviews,
+  PropertyReview,
+  PropertyRatings,
 } from '../api/reviews';
 import { createBooking, RentalType } from '../api/booking';
 import { createPayment, getPaymentById } from '../api/payments';
@@ -27,24 +44,35 @@ import { useAuth } from '../context/AuthContext';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ===============================
-// ICÔNES SVG
+// ICÔNES SVG (Version A)
 // ===============================
-interface IconProps { size?: number; color?: string; }
+interface IconProps {
+  size?: number;
+  color?: string;
+}
 
 const ArrowLeftIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Line x1="19" y1="12" x2="5" y2="12" /><Path d="M12 19l-7-7 7-7" />
+    <Line x1="19" y1="12" x2="5" y2="12" />
+    <Path d="M12 19l-7-7 7-7" />
   </Svg>
 );
 
 const Share2Icon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Circle cx="18" cy="5" r="3" /><Circle cx="6" cy="12" r="3" /><Circle cx="18" cy="19" r="3" />
-    <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    <Circle cx="18" cy="5" r="3" />
+    <Circle cx="6" cy="12" r="3" />
+    <Circle cx="18" cy="19" r="3" />
+    <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
   </Svg>
 );
 
-const HeartIcon: React.FC<IconProps & { filled?: boolean }> = ({ size = 20, color = '#fbbf24', filled = false }) => (
+const HeartIcon: React.FC<IconProps & { filled?: boolean }> = ({
+  size = 20,
+  color = '#fbbf24',
+  filled = false,
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={2}>
     <Path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
   </Svg>
@@ -64,11 +92,16 @@ const ChevronRightIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' })
 
 const XIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Line x1="18" y1="6" x2="6" y2="18" /><Line x1="6" y1="6" x2="18" y2="18" />
+    <Line x1="18" y1="6" x2="6" y2="18" />
+    <Line x1="6" y1="6" x2="18" y2="18" />
   </Svg>
 );
 
-const StarIcon: React.FC<IconProps & { filled?: boolean }> = ({ size = 20, color = '#fbbf24', filled = false }) => (
+const StarIcon: React.FC<IconProps & { filled?: boolean }> = ({
+  size = 20,
+  color = '#fbbf24',
+  filled = false,
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={2}>
     <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
   </Svg>
@@ -76,39 +109,49 @@ const StarIcon: React.FC<IconProps & { filled?: boolean }> = ({ size = 20, color
 
 const UsersIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><Circle cx="9" cy="7" r="4" />
+    <Path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+    <Circle cx="9" cy="7" r="4" />
   </Svg>
 );
 
 const HomeIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><Path d="M9 22V12h6v10" />
+    <Path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    <Path d="M9 22V12h6v10" />
   </Svg>
 );
 
 const BedIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M2 4v16" /><Path d="M2 8h18a2 2 0 012 2v10" /><Path d="M2 17h20" /><Path d="M6 8v9" />
+    <Path d="M2 4v16" />
+    <Path d="M2 8h18a2 2 0 012 2v10" />
+    <Path d="M2 17h20" />
+    <Path d="M6 8v9" />
   </Svg>
 );
 
 const BathIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Path d="M4 12h16a1 1 0 011 1v3a4 4 0 01-4 4H7a4 4 0 01-4-4v-3a1 1 0 011-1z" />
-    <Path d="M6 12V5a2 2 0 012-2h3v2.25" /><Line x1="4" y1="20" x2="7" y2="20" /><Line x1="17" y1="20" x2="20" y2="20" />
+    <Path d="M6 12V5a2 2 0 012-2h3v2.25" />
+    <Line x1="4" y1="20" x2="7" y2="20" />
+    <Line x1="17" y1="20" x2="20" y2="20" />
   </Svg>
 );
 
 const AwardIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Circle cx="12" cy="8" r="6" /><Path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
+    <Circle cx="12" cy="8" r="6" />
+    <Path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
   </Svg>
 );
 
 const CalendarIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Rect x="3" y="4" width="18" height="18" rx="2" />
-    <Line x1="16" y1="2" x2="16" y2="6" /><Line x1="8" y1="2" x2="8" y2="6" /><Line x1="3" y1="10" x2="21" y2="10" />
+    <Line x1="16" y1="2" x2="16" y2="6" />
+    <Line x1="8" y1="2" x2="8" y2="6" />
+    <Line x1="3" y1="10" x2="21" y2="10" />
   </Svg>
 );
 
@@ -118,36 +161,43 @@ const ChevronDownIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) 
   </Svg>
 );
 
+// Équipements (Version A)
 const WifiIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M5 12.55a11 11 0 0114.08 0" /><Path d="M1.42 9a16 16 0 0121.16 0" />
-    <Path d="M8.53 16.11a6 6 0 016.95 0" /><Circle cx="12" cy="20" r="1" fill={color} />
+    <Path d="M5 12.55a11 11 0 0114.08 0" />
+    <Path d="M1.42 9a16 16 0 0121.16 0" />
+    <Path d="M8.53 16.11a6 6 0 016.95 0" />
+    <Circle cx="12" cy="20" r="1" fill={color} />
   </Svg>
 );
 
 const CarIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
     <Path d="M14 16H9m10 0h3v-3.15a1 1 0 00-.84-.99L16 11l-2.7-3.6a1 1 0 00-.8-.4H5.24a2 2 0 00-1.8 1.1l-.8 1.63A6 6 0 002 12.42V16h2" />
-    <Circle cx="6.5" cy="16.5" r="2.5" /><Circle cx="16.5" cy="16.5" r="2.5" />
+    <Circle cx="6.5" cy="16.5" r="2.5" />
+    <Circle cx="16.5" cy="16.5" r="2.5" />
   </Svg>
 );
 
 const WindIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M17.7 7.7a2.5 2.5 0 111.8 4.3H2" /><Path d="M9.6 4.6A2 2 0 1111 8H2" />
+    <Path d="M17.7 7.7a2.5 2.5 0 111.8 4.3H2" />
+    <Path d="M9.6 4.6A2 2 0 1111 8H2" />
     <Path d="M12.6 19.4A2 2 0 1014 16H2" />
   </Svg>
 );
 
 const TvIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Rect x="2" y="7" width="20" height="15" rx="2" /><Path d="M17 2l-5 5-5-5" />
+    <Rect x="2" y="7" width="20" height="15" rx="2" />
+    <Path d="M17 2l-5 5-5-5" />
   </Svg>
 );
 
 const UtensilsIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2" /><Path d="M7 2v20" />
+    <Path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2" />
+    <Path d="M7 2v20" />
     <Path d="M21 15V2v0a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7" />
   </Svg>
 );
@@ -174,7 +224,8 @@ const KeyIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
 
 const CheckCircleIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><Path d="M22 4L12 14.01l-3-3" />
+    <Path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+    <Path d="M22 4L12 14.01l-3-3" />
   </Svg>
 );
 
@@ -186,13 +237,15 @@ const MessageCircleIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }
 
 const ClockIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Circle cx="12" cy="12" r="10" /><Path d="M12 6v6l4 2" />
+    <Circle cx="12" cy="12" r="10" />
+    <Path d="M12 6v6l4 2" />
   </Svg>
 );
 
 const GlobeIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Circle cx="12" cy="12" r="10" /><Line x1="2" y1="12" x2="22" y2="12" />
+    <Circle cx="12" cy="12" r="10" />
+    <Line x1="2" y1="12" x2="22" y2="12" />
     <Path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
   </Svg>
 );
@@ -205,38 +258,63 @@ const FlagIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
 );
 
 const CheckIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <Path d="M20 6L9 17l-5-5" />
   </Svg>
 );
 
-const PhoneIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
-  </Svg>
-);
-
-// Icône générique pour équipements backend
+// Icône fallback équipements
 const EquipmentGenericIcon: React.FC<IconProps> = ({ size = 20, color = '#fbbf24' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Rect x="3" y="3" width="18" height="18" rx="2" /><Path d="M9 9h6v6H9z" />
+    <Rect x="3" y="3" width="18" height="18" rx="2" />
+    <Path d="M9 9h6v6H9z" />
   </Svg>
 );
 
-// Map nom d'équipement → icône
+// Map nom d'équipement → icône (A “riche”, pas simplifiée)
 const EQUIPMENT_ICON_MAP: Record<string, React.FC<IconProps>> = {
-  'wifi': WifiIcon, 'internet': WifiIcon, 'wi-fi': WifiIcon,
-  'parking': CarIcon, 'garage': CarIcon,
-  'climatisation': WindIcon, 'clim': WindIcon, 'ventilateur': WindIcon,
-  'tv': TvIcon, 'télévision': TvIcon, 'television': TvIcon,
-  'cuisine': UtensilsIcon, 'kitchen': UtensilsIcon,
-  'piscine': WavesIcon, 'pool': WavesIcon,
-  'sécurité': ShieldIcon, 'security': ShieldIcon, 'gardien': ShieldIcon,
-  'générateur': KeyIcon, 'generator': KeyIcon,
+  wifi: WifiIcon,
+  internet: WifiIcon,
+  'wi-fi': WifiIcon,
+
+  parking: CarIcon,
+  garage: CarIcon,
+
+  climatisation: WindIcon,
+  clim: WindIcon,
+  ventilateur: WindIcon,
+  air: WindIcon,
+
+  tv: TvIcon,
+  télévision: TvIcon,
+  television: TvIcon,
+
+  cuisine: UtensilsIcon,
+  kitchen: UtensilsIcon,
+
+  piscine: WavesIcon,
+  pool: WavesIcon,
+
+  sécurité: ShieldIcon,
+  security: ShieldIcon,
+  gardien: ShieldIcon,
+
+  générateur: KeyIcon,
+  generateur: KeyIcon,
+  generator: KeyIcon,
 };
 
 function getEquipmentIcon(name: string): React.FC<IconProps> {
-  const lower = name.toLowerCase();
+  const lower = (name || '').toLowerCase();
   for (const [key, icon] of Object.entries(EQUIPMENT_ICON_MAP)) {
     if (lower.includes(key)) return icon;
   }
@@ -244,26 +322,7 @@ function getEquipmentIcon(name: string): React.FC<IconProps> {
 }
 
 // ===============================
-// MOBILE MONEY ICONS
-// ===============================
-const MTNMoneyIcon: React.FC<{ size?: number }> = ({ size = 48 }) => (
-  <Svg width={size} height={size} viewBox="0 0 48 48">
-    <Circle cx="24" cy="24" r="22" fill="#FFCC00" />
-    <Path d="M12 28L18 16L24 28L30 16L36 28" stroke="#000" strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    <Circle cx="24" cy="34" r="3" fill="#000" />
-  </Svg>
-);
-
-const AirtelMoneyIcon: React.FC<{ size?: number }> = ({ size = 48 }) => (
-  <Svg width={size} height={size} viewBox="0 0 48 48">
-    <Circle cx="24" cy="24" r="22" fill="#FF0000" />
-    <Path d="M16 32C16 32 20 16 24 16C28 16 32 32 32 32" stroke="#FFF" strokeWidth={3} fill="none" strokeLinecap="round" />
-    <Circle cx="24" cy="20" r="4" fill="#FFF" />
-  </Svg>
-);
-
-// ===============================
-// KONGO PATTERN & PARTICULES
+// KONGO PATTERN & PARTICULES (A)
 // ===============================
 const KongoPattern: React.FC = () => {
   const patternSize = 80;
@@ -292,7 +351,10 @@ const KongoPattern: React.FC = () => {
 };
 
 interface FloatingParticleProps {
-  startX: number; startY: number; delay: number; duration: number;
+  startX: number;
+  startY: number;
+  delay: number;
+  duration: number;
 }
 
 const FloatingParticle: React.FC<FloatingParticleProps> = ({ startX, startY, delay, duration }) => {
@@ -320,7 +382,7 @@ const FloatingParticle: React.FC<FloatingParticleProps> = ({ startX, startY, del
         ])
       ),
     ]).start();
-  }, []);
+  }, [delay, duration, opacity, translateX, translateY]);
 
   return (
     <Animated.View
@@ -333,18 +395,47 @@ const FloatingParticle: React.FC<FloatingParticleProps> = ({ startX, startY, del
 };
 
 // ===============================
+// MOBILE MONEY ICONS (A)
+// ===============================
+const MTNMoneyIcon: React.FC<{ size?: number }> = ({ size = 48 }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Circle cx="24" cy="24" r="22" fill="#FFCC00" />
+    <Path
+      d="M12 28L18 16L24 28L30 16L36 28"
+      stroke="#000"
+      strokeWidth={3}
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Circle cx="24" cy="34" r="3" fill="#000" />
+  </Svg>
+);
+
+const AirtelMoneyIcon: React.FC<{ size?: number }> = ({ size = 48 }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Circle cx="24" cy="24" r="22" fill="#FF0000" />
+    <Path
+      d="M16 32C16 32 20 16 24 16C28 16 32 32 32 32"
+      stroke="#FFF"
+      strokeWidth={3}
+      fill="none"
+      strokeLinecap="round"
+    />
+    <Circle cx="24" cy="20" r="4" fill="#FFF" />
+  </Svg>
+);
+
+// ===============================
 // TYPES
 // ===============================
+type Props = { propertyId: string };
 type PaymentMethodId = 'mtn' | 'airtel' | null;
 type PaymentStatusType = 'idle' | 'sending' | 'waiting' | 'verifying' | 'success' | 'error';
 type ReportStep = 'reason' | 'subreason' | 'details' | 'info' | 'submitted';
 
-type Props = {
-  propertyId: string;
-};
-
 // ===============================
-// REPORT REASONS DATA
+// REPORT REASONS (A)
 // ===============================
 const reportReasons = [
   { id: 'inexact', label: 'Elle est inexacte ou incorrecte', needsDetails: true, needsSubReason: false, needsInfo: false },
@@ -380,14 +471,14 @@ const otherSubReasons = [
 ];
 
 // ===============================
-// COMPOSANT PRINCIPAL
+// COMPOSANT PRINCIPAL (A + BACKEND)
 // ===============================
 const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user } = useAuth();
 
-  // --- Backend data
+  // Backend data
   const [property, setProperty] = useState<PropertyDetail | null>(null);
   const [availability, setAvailability] = useState<Record<string, AvailabilityDay>>({});
   const [reviews, setReviews] = useState<PropertyReview[]>([]);
@@ -395,7 +486,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- UI states
+  // UI states (A)
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
@@ -405,7 +496,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const [showHostModal, setShowHostModal] = useState(false);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
 
-  // --- Calendar & booking
+  // Calendar & booking
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [checkInDate, setCheckInDate] = useState<Date | null>(null);
@@ -414,28 +505,28 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const [guestsCount, setGuestsCount] = useState(2);
   const [paymentOption, setPaymentOption] = useState<'now' | 'later'>('now');
 
-  // --- Report
+  // Report
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportStep, setReportStep] = useState<ReportStep>('reason');
   const [selectedReportReason, setSelectedReportReason] = useState<string | null>(null);
   const [selectedSubReason, setSelectedSubReason] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState('');
 
-  // --- Payment
+  // Payment
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodId>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusType>('idle');
 
-  // --- Additional modals
+  // Additional modals
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [showPriceDetailModal, setShowPriceDetailModal] = useState(false);
   const [showDeferredPaymentModal, setShowDeferredPaymentModal] = useState(false);
 
-  // --- Price display alternation
+  // Price display alternation for mixed rental
   const [priceDisplayMode, setPriceDisplayMode] = useState<'night' | 'month'>('night');
 
-  // --- Backend booking & payment
+  // Booking & payment backend ids
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [bookingTotal, setBookingTotal] = useState<number | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -443,64 +534,25 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
-  // --- Reviews pagination
+  // Reviews pagination
   const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [allReviewsLoaded, setAllReviewsLoaded] = useState(false);
 
   const carouselRef = useRef<ScrollView>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Particules
-  const particles = useMemo(() => Array.from({ length: 12 }).map((_, i) => ({
-    id: i,
-    startX: Math.random() * SCREEN_WIDTH,
-    startY: Math.random() * SCREEN_HEIGHT,
-    delay: Math.random() * 5000,
-    duration: 5000 + Math.random() * 10000,
-  })), []);
-
-  // ===============================
-  // DERIVED DATA
-  // ===============================
-  const images = useMemo(() => {
-    if (!property?.photos?.length) return [
-      'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',
-    ];
-    return property.photos
-      .sort((a: PropertyPhoto, b: PropertyPhoto) => a.sortOrder - b.sortOrder)
-      .map((p: PropertyPhoto) => p.url)
-      .filter(Boolean) as string[];
-  }, [property?.photos]);
-
-  const locationType = useMemo((): 'short' | 'long' | 'both' => {
-    if (!property) return 'short';
-    if (property.rentalMode === 'both') return 'both';
-    if (property.rentalMode === 'long_term') return 'long';
-    return 'short';
-  }, [property?.rentalMode]);
-
-  const pricePerNight = property?.pricePerNight ?? 0;
-  const pricePerMonth = property?.pricePerMonth ?? 0;
-  const currency = 'FCFA';
-
-  // ===============================
-  // EFFECTS
-  // ===============================
-
-  // Price alternation for "both" mode
-  useEffect(() => {
-    if (locationType === 'both') {
-      const interval = setInterval(() => {
-        setPriceDisplayMode(prev => prev === 'night' ? 'month' : 'night');
-      }, 3000);
-      return () => clearInterval(interval);
-    } else if (locationType === 'long') {
-      setPriceDisplayMode('month');
-    } else {
-      setPriceDisplayMode('night');
-    }
-  }, [locationType]);
+  // Particles (A)
+  const particles = useMemo(
+    () =>
+      Array.from({ length: 12 }).map((_, i) => ({
+        id: i,
+        startX: Math.random() * SCREEN_WIDTH,
+        startY: Math.random() * SCREEN_HEIGHT,
+        delay: Math.random() * 5000,
+        duration: 5000 + Math.random() * 10000,
+      })),
+    []
+  );
 
   // Pre-fill phone from user profile
   useEffect(() => {
@@ -508,9 +560,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       const digits = user.phoneNumber.replace(/[^\d]/g, '');
       setPhoneNumber(digits.slice(-9));
     }
-  }, [user]);
+  }, [user, phoneNumber]);
 
-  // Load all backend data
+  // Load backend data
   useEffect(() => {
     let isMounted = true;
 
@@ -523,12 +575,14 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         if (!isMounted) return;
         setProperty(data);
 
-        // Check favorite
+        // Favorite state
         if (token) {
           try {
             const fav = await checkFavorite(propertyId);
             if (isMounted) setIsFavorite(fav.isFavorite);
-          } catch {}
+          } catch {
+            // ignore
+          }
         }
 
         // Availability (60 days)
@@ -549,7 +603,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         if (!isMounted) return;
         setRatings(r);
 
-        // Reviews
+        // Reviews (first page)
         const resp = await getPropertyReviews(propertyId, { limit: 10, offset: 0 });
         if (!isMounted) return;
         setReviews(resp.items);
@@ -563,20 +617,63 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     }
 
     loadAll();
-    return () => { isMounted = false; };
-  }, [propertyId]);
+    return () => {
+      isMounted = false;
+    };
+  }, [propertyId, token]);
 
   // Cleanup polling
-  useEffect(() => () => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
   }, []);
 
-  // ===============================
-  // CAROUSEL
-  // ===============================
+  // Derived data
+  const images = useMemo(() => {
+    if (!property?.photos?.length) {
+      // placeholder A si backend pas encore de photos
+      return [
+        'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
+        'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',
+      ];
+    }
+    return property.photos
+      .slice()
+      .sort((a: PropertyPhoto, b: PropertyPhoto) => a.sortOrder - b.sortOrder)
+      .map((p: PropertyPhoto) => p.url)
+      .filter(Boolean) as string[];
+  }, [property?.photos]);
+
+  const locationType = useMemo((): 'short' | 'long' | 'both' => {
+    if (!property) return 'short';
+    if (property.rentalMode === 'both') return 'both';
+    if (property.rentalMode === 'long_term') return 'long';
+    return 'short';
+  }, [property?.rentalMode]);
+
+  const pricePerNight = property?.pricePerNight ?? 0;
+  const pricePerMonth = property?.pricePerMonth ?? 0;
+  const currency = 'FCFA';
+
+  // Price alternation for "both" mode (A)
+  useEffect(() => {
+    if (locationType === 'both') {
+      const interval = setInterval(() => {
+        setPriceDisplayMode(prev => (prev === 'night' ? 'month' : 'night'));
+      }, 3000);
+      return () => clearInterval(interval);
+    } else if (locationType === 'long') {
+      setPriceDisplayMode('month');
+    } else {
+      setPriceDisplayMode('night');
+    }
+  }, [locationType]);
+
+  // Carousel
   const handleCarouselScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / SCREEN_WIDTH);
@@ -590,12 +687,8 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     setShowImageViewer(true);
   };
 
-  // ===============================
-  // PRICE / DATES
-  // ===============================
-  const formatPrice = (price: number) => {
-    return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  };
+  // Price / dates
+  const formatPrice = (price: number) => price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   const calculateNights = () => {
     if (!checkInDate || !checkOutDate) return 0;
@@ -619,13 +712,11 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     return diff >= 30 * 24 * 60 * 60 * 1000;
   };
 
-  const formatShortDate = (date: Date) => {
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-  };
+  const formatShortDate = (date: Date) =>
+    date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
-  const formatLongDate = (date: Date) => {
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
+  const formatLongDate = (date: Date) =>
+    date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const formatRelativeDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -646,9 +737,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     return `Il y a ${diffYears} ans`;
   };
 
-  // ===============================
-  // CALENDAR
-  // ===============================
+  // Calendar (A)
   const generateCalendarDays = (month: Date): (Date | null)[] => {
     const year = month.getFullYear();
     const monthIndex = month.getMonth();
@@ -660,9 +749,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     if (startDay < 0) startDay = 6;
     for (let i = 0; i < startDay; i++) days.push(null);
 
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      days.push(new Date(year, monthIndex, d));
-    }
+    for (let d = 1; d <= lastDay.getDate(); d++) days.push(new Date(year, monthIndex, d));
     return days;
   };
 
@@ -706,9 +793,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     setCheckOutDate(null);
   };
 
-  // ===============================
-  // CANCELLATION
-  // ===============================
+  // Cancellation (A)
   const isFreeCancellationAvailable = () => {
     if (!checkInDate) return false;
     const today = new Date();
@@ -730,9 +815,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     return date;
   };
 
-  // ===============================
-  // REPORT
-  // ===============================
+  // Report helpers (A)
   const getSubReasons = () => {
     if (selectedReportReason === 'scam') return scamSubReasons;
     if (selectedReportReason === 'offensive') return offensiveSubReasons;
@@ -743,23 +826,19 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const handleReportReasonSelect = (reasonId: string) => {
     setSelectedReportReason(reasonId);
     const reason = reportReasons.find(r => r.id === reasonId);
-    if (reason) {
-      if (reason.needsSubReason) setReportStep('subreason');
-      else if (reason.needsDetails) setReportStep('details');
-      else if (reason.needsInfo) setReportStep('info');
-      else setReportStep('submitted');
-    }
+    if (!reason) return;
+    if (reason.needsSubReason) setReportStep('subreason');
+    else if (reason.needsDetails) setReportStep('details');
+    else if (reason.needsInfo) setReportStep('info');
+    else setReportStep('submitted');
   };
 
   const handleSubReasonSelect = (subReasonId: string) => {
     setSelectedSubReason(subReasonId);
     const subReasons = getSubReasons();
     const subReason = subReasons.find((s: any) => s.id === subReasonId);
-    if (subReason && 'needsDetails' in subReason && subReason.needsDetails) {
-      setReportStep('details');
-    } else {
-      setReportStep('submitted');
-    }
+    if (subReason && 'needsDetails' in subReason && subReason.needsDetails) setReportStep('details');
+    else setReportStep('submitted');
   };
 
   const handleReportBack = () => {
@@ -785,9 +864,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     setReportDescription('');
   };
 
-  // ===============================
-  // FAVORITE
-  // ===============================
+  // Favorite
   const handleFavorite = async () => {
     const newVal = !isFavorite;
     setIsFavorite(newVal);
@@ -799,18 +876,14 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     }
   };
 
-  // ===============================
-  // LOAD MORE REVIEWS
-  // ===============================
+  // Load more reviews
   const loadMoreReviews = async () => {
     if (loadingMoreReviews || allReviewsLoaded) return;
     try {
       setLoadingMoreReviews(true);
       const resp = await getPropertyReviews(propertyId, { limit: 10, offset: reviews.length });
       setReviews(prev => [...prev, ...resp.items]);
-      if (reviews.length + resp.items.length >= resp.total) {
-        setAllReviewsLoaded(true);
-      }
+      if (reviews.length + resp.items.length >= resp.total) setAllReviewsLoaded(true);
     } catch (e) {
       console.error('Erreur chargement reviews:', e);
     } finally {
@@ -818,9 +891,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     }
   };
 
-  // ===============================
-  // BOOKING + PAYMENT
-  // ===============================
+  // Booking + payment (backend)
   const normalizeMsisdn = (raw: string) => {
     let digits = raw.replace(/[^\d]/g, '');
     if (digits.startsWith('00')) digits = digits.slice(2);
@@ -843,7 +914,10 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
     pollTimerRef.current = setInterval(async () => {
       if (Date.now() - start > timeoutMs) {
-        if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
         setPaymentStatus('error');
         setSubmittingPayment(false);
         return;
@@ -851,24 +925,29 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       try {
         const p = await getPaymentById(tok, id);
         if (p.status === 'success') {
-          if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
           setPaymentStatus('success');
           setSubmittingPayment(false);
         } else if (p.status === 'failed') {
-          if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
           setPaymentStatus('error');
           setSubmittingPayment(false);
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }, 5000);
   };
 
   const handleReservePress = () => {
-    if (checkInDate && checkOutDate) {
-      setShowBookingModal(true);
-    } else {
-      setShowCalendarModal(true);
-    }
+    if (checkInDate && checkOutDate) setShowBookingModal(true);
+    else setShowCalendarModal(true);
   };
 
   const handleBookingConfirm = async () => {
@@ -896,9 +975,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       });
 
       setBookingId(booking.id);
-      if (typeof booking.totalAmount === 'number') {
-        setBookingTotal(booking.totalAmount);
-      }
+      if (typeof booking.totalAmount === 'number') setBookingTotal(booking.totalAmount);
 
       setShowBookingModal(false);
       setTimeout(() => {
@@ -946,20 +1023,31 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   };
 
   const closePaymentModal = () => {
-    if (submittingPayment && (paymentStatus === 'sending' || paymentStatus === 'waiting' || paymentStatus === 'verifying')) return;
-    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+    if (
+      submittingPayment &&
+      (paymentStatus === 'sending' || paymentStatus === 'waiting' || paymentStatus === 'verifying')
+    )
+      return;
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     setShowPaymentModal(false);
     setPaymentStatus('idle');
     setSubmittingPayment(false);
   };
 
   // ===============================
-  // RENDER: LOADING / ERROR
+  // LOADING / ERROR
   // ===============================
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient
+          colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
         <ActivityIndicator size="large" color="#fbbf24" />
         <Text style={styles.loadingText}>Chargement du bien...</Text>
       </View>
@@ -987,8 +1075,26 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
   const serviceFee = Math.round(subtotal * 0.12);
   const totalPrice = subtotal + serviceFee;
 
+  // Highlights (A) – gardés même si backend n’a pas tout
+  const highlights = [
+    {
+      icon: AwardIcon,
+      title: 'Hôte expérimenté',
+      description: `${property.host?.firstName ?? 'L’hôte'} a ${ratings?.count ?? 0} commentaire${(ratings?.count ?? 0) > 1 ? 's' : ''} pour ses logements.`,
+    },
+    {
+      icon: CalendarIcon,
+      title: 'Annulation gratuite pendant 48h',
+      description: "Annulation gratuite après la réservation.",
+    },
+  ];
+
+  // Host listings placeholder (A) – si backend ne renvoie pas encore host.listings
+  const hostListings: Array<{ id: string; title: string; image?: string | null; rating?: number | null; reviewsCount?: number | null }> =
+    Array.isArray((property.host as any)?.listings) ? (property.host as any).listings : [];
+
   // ===============================
-  // RENDER PRINCIPAL
+  // RENDER PRINCIPAL (A)
   // ===============================
   return (
     <View style={styles.container}>
@@ -1000,7 +1106,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       />
       <KongoPattern />
       <View style={styles.particlesContainer}>
-        {particles.map(p => <FloatingParticle key={p.id} {...p} />)}
+        {particles.map(p => (
+          <FloatingParticle key={p.id} {...p} />
+        ))}
       </View>
 
       <ScrollView
@@ -1008,7 +1116,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         contentContainerStyle={{ paddingBottom: 100 + (insets.bottom || 16) }}
         showsVerticalScrollIndicator={false}
       >
-        {/* CAROUSEL D'IMAGES */}
+        {/* CAROUSEL */}
         <View style={styles.carouselContainer}>
           <ScrollView
             ref={carouselRef}
@@ -1031,6 +1139,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
             <TouchableOpacity style={styles.headerBtn} activeOpacity={0.8} onPress={() => router.back()}>
               <ArrowLeftIcon size={18} color="#fbbf24" />
             </TouchableOpacity>
+
             <View style={styles.headerRight}>
               <TouchableOpacity style={styles.headerBtn} activeOpacity={0.8}>
                 <Share2Icon size={16} color="#fbbf24" />
@@ -1042,21 +1151,23 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
           </View>
 
           <View style={styles.carouselIndicator}>
-            <Text style={styles.carouselIndicatorText}>{currentImageIndex + 1}/{images.length}</Text>
+            <Text style={styles.carouselIndicatorText}>
+              {currentImageIndex + 1}/{images.length}
+            </Text>
           </View>
         </View>
 
-        {/* CONTENU */}
+        {/* CONTENT */}
         <View style={styles.content}>
-          {/* Titre */}
           <Text style={styles.title}>{property.title}</Text>
 
-          {/* Type et localisation */}
           <Text style={styles.subtitle}>
-            {property.propertyType ?? 'Logement entier'} · {property.neighborhood?.name ? `${property.neighborhood.name}, ` : ''}{property.city}
+            {(property.propertyType ?? 'Logement entier') +
+              ' · ' +
+              (property.neighborhood?.name ? `${property.neighborhood.name}, ` : '') +
+              (property.city ?? '')}
           </Text>
 
-          {/* Capacité */}
           <View style={styles.capacityRow}>
             <View style={styles.capacityItem}>
               <UsersIcon size={14} color="rgba(252, 211, 77, 0.7)" />
@@ -1065,12 +1176,16 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
             <Text style={styles.capacityDot}>·</Text>
             <View style={styles.capacityItem}>
               <HomeIcon size={14} color="rgba(252, 211, 77, 0.7)" />
-              <Text style={styles.capacityText}>{property.bedrooms} chambre{property.bedrooms > 1 ? 's' : ''}</Text>
+              <Text style={styles.capacityText}>
+                {property.bedrooms} chambre{property.bedrooms > 1 ? 's' : ''}
+              </Text>
             </View>
             <Text style={styles.capacityDot}>·</Text>
             <View style={styles.capacityItem}>
               <BedIcon size={14} color="rgba(252, 211, 77, 0.7)" />
-              <Text style={styles.capacityText}>{property.beds} lit{property.beds > 1 ? 's' : ''}</Text>
+              <Text style={styles.capacityText}>
+                {property.beds} lit{property.beds > 1 ? 's' : ''}
+              </Text>
             </View>
             <Text style={styles.capacityDot}>·</Text>
             <View style={styles.capacityItem}>
@@ -1079,7 +1194,6 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
             </View>
           </View>
 
-          {/* Note et avis */}
           {ratings && ratings.count > 0 && (
             <View style={styles.ratingRow}>
               <StarIcon size={18} color="#facc15" filled />
@@ -1093,32 +1207,32 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
           <View style={styles.separator} />
 
-          {/* HIGHLIGHTS */}
+          {/* HIGHLIGHTS (A) */}
           <View style={styles.highlightsSection}>
-            <View style={styles.highlightItem}>
-              <View style={styles.highlightIconBox}><AwardIcon size={20} color="#fbbf24" /></View>
-              <View style={styles.highlightContent}>
-                <Text style={styles.highlightTitle}>Hôte expérimenté</Text>
-                <Text style={styles.highlightDescription}>
-                  {property.host.firstName} a {ratings?.count ?? 0} commentaire{(ratings?.count ?? 0) > 1 ? 's' : ''} pour ses logements.
-                </Text>
-              </View>
-            </View>
-            <View style={styles.highlightItem}>
-              <View style={styles.highlightIconBox}><CalendarIcon size={20} color="#fbbf24" /></View>
-              <View style={styles.highlightContent}>
-                <Text style={styles.highlightTitle}>Annulation gratuite pendant 48h</Text>
-                <Text style={styles.highlightDescription}>Annulation gratuite après la réservation.</Text>
-              </View>
-            </View>
+            {highlights.map((h, idx) => {
+              const Icon = h.icon;
+              return (
+                <View key={idx} style={styles.highlightItem}>
+                  <View style={styles.highlightIconBox}>
+                    <Icon size={20} color="#fbbf24" />
+                  </View>
+                  <View style={styles.highlightContent}>
+                    <Text style={styles.highlightTitle}>{h.title}</Text>
+                    <Text style={styles.highlightDescription}>{h.description}</Text>
+                  </View>
+                </View>
+              );
+            })}
           </View>
 
           <View style={styles.separator} />
 
           {/* DESCRIPTION */}
           <View style={styles.descriptionSection}>
-            <Text style={styles.descriptionText} numberOfLines={6}>{property.description}</Text>
-            {property.description && property.description.length > 200 && (
+            <Text style={styles.descriptionText} numberOfLines={6}>
+              {property.description}
+            </Text>
+            {!!property.description && property.description.length > 200 && (
               <TouchableOpacity style={styles.readMoreButton} onPress={() => setShowDescriptionModal(true)} activeOpacity={0.8}>
                 <Text style={styles.readMoreText}>Lire la suite</Text>
                 <ChevronDownIcon size={16} color="#fbbf24" />
@@ -1128,15 +1242,17 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
           <View style={styles.separator} />
 
-          {/* HÔTE */}
+          {/* HOST (A) */}
           <TouchableOpacity style={styles.hostSection} onPress={() => setShowHostModal(true)} activeOpacity={0.9}>
             <View style={styles.hostInfo}>
               <View style={styles.hostAvatarContainer}>
-                {property.host.avatarUrl ? (
-                  <Image source={{ uri: property.host.avatarUrl }} style={styles.hostAvatar} />
+                {(property.host as any)?.avatarUrl ? (
+                  <Image source={{ uri: (property.host as any).avatarUrl }} style={styles.hostAvatar} />
                 ) : (
                   <View style={[styles.hostAvatar, styles.hostAvatarFallback]}>
-                    <Text style={styles.hostAvatarInitials}>{property.host.firstName?.[0]}{property.host.lastName?.[0]}</Text>
+                    <Text style={styles.hostAvatarInitials}>
+                      {(property.host?.firstName?.[0] ?? '') + (property.host?.lastName?.[0] ?? '')}
+                    </Text>
                   </View>
                 )}
                 <View style={styles.hostVerifiedBadge}>
@@ -1146,9 +1262,13 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 </View>
               </View>
               <View style={styles.hostDetails}>
-                <Text style={styles.hostName}>Hôte : {property.host.firstName} {property.host.lastName}</Text>
+                <Text style={styles.hostName}>
+                  Hôte : {property.host?.firstName ?? ''} {property.host?.lastName ?? ''}
+                </Text>
                 <Text style={styles.hostExperience}>
-                  {property.host.experience ? `${property.host.experience} d'expérience en tant qu'hôte` : 'Hôte sur VANDA'}
+                  {(property.host as any)?.experience
+                    ? `${(property.host as any).experience} d'expérience en tant qu'hôte`
+                    : "Hôte sur VANDA"}
                 </Text>
               </View>
             </View>
@@ -1157,7 +1277,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
           <View style={styles.separator} />
 
-          {/* ÉQUIPEMENTS */}
+          {/* AMENITIES (A) */}
           <View style={styles.amenitiesSection}>
             <Text style={styles.sectionTitle}>Ce que propose ce logement</Text>
             <View style={styles.amenitiesList}>
@@ -1172,33 +1292,48 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 );
               })}
             </View>
+
             {(property.equipments || []).length > 6 && (
               <TouchableOpacity style={styles.showAllAmenitiesBtn} onPress={() => setShowAmenitiesModal(true)} activeOpacity={0.8}>
-                <Text style={styles.showAllAmenitiesBtnText}>Afficher les {property.equipments.length} équipements</Text>
+                <Text style={styles.showAllAmenitiesBtnText}>
+                  Afficher les {(property.equipments || []).length} équipements
+                </Text>
               </TouchableOpacity>
             )}
           </View>
 
           <View style={styles.separator} />
 
-          {/* COMMENTAIRES */}
+          {/* REVIEWS (A) */}
           <View style={styles.reviewsSection}>
             <View style={styles.reviewsHeader}>
               <StarIcon size={20} color="#facc15" filled />
               <Text style={styles.reviewsRating}>{ratings?.averages.overall?.toFixed(1) ?? 'N/A'}</Text>
               <Text style={styles.reviewsDot}>·</Text>
-              <Text style={styles.reviewsCountText}>{ratings?.count ?? 0} commentaires</Text>
+              <Text style={styles.reviewsCount}>{ratings?.count ?? 0} commentaires</Text>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reviewsCarousel} contentContainerStyle={styles.reviewsCarouselContent}>
-              {reviews.map((review) => (
-                <TouchableOpacity key={review.id} style={styles.reviewCard} onPress={() => setShowReviewsModal(true)} activeOpacity={0.9}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.reviewsCarousel}
+              contentContainerStyle={styles.reviewsCarouselContent}
+            >
+              {reviews.map(review => (
+                <TouchableOpacity
+                  key={review.id}
+                  style={styles.reviewCard}
+                  onPress={() => setShowReviewsModal(true)}
+                  activeOpacity={0.9}
+                >
                   <View style={styles.reviewCardHeader}>
                     {review.reviewer?.avatarUrl ? (
                       <Image source={{ uri: review.reviewer.avatarUrl }} style={styles.reviewAvatar} />
                     ) : (
                       <View style={[styles.reviewAvatar, styles.reviewAvatarFallback]}>
-                        <Text style={styles.reviewAvatarInitials}>{review.reviewer?.firstName?.[0]}{review.reviewer?.lastName?.[0]}</Text>
+                        <Text style={styles.reviewAvatarInitials}>
+                          {(review.reviewer?.firstName?.[0] ?? '') + (review.reviewer?.lastName?.[0] ?? '')}
+                        </Text>
                       </View>
                     )}
                     <View style={styles.reviewAuthorInfo}>
@@ -1208,13 +1343,22 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                       </Text>
                     </View>
                   </View>
+
                   <View style={styles.reviewStars}>
                     {[...Array(5)].map((_, i) => (
-                      <StarIcon key={i} size={14} color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'} filled={i < (review.overallRating ?? 0)} />
+                      <StarIcon
+                        key={i}
+                        size={14}
+                        color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'}
+                        filled={i < (review.overallRating ?? 0)}
+                      />
                     ))}
                     <Text style={styles.reviewDate}>· {formatRelativeDate(review.createdAt)}</Text>
                   </View>
-                  <Text style={styles.reviewComment} numberOfLines={5}>{review.comment}</Text>
+
+                  <Text style={styles.reviewComment} numberOfLines={5}>
+                    {review.comment}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -1228,11 +1372,10 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
           <View style={styles.separator} />
 
-          {/* RÈGLEMENT INTÉRIEUR */}
+          {/* HOUSE RULES (A) – prêt pour backend varié */}
           <View style={styles.rulesSection}>
             <Text style={styles.sectionTitle}>Règlement intérieur</Text>
             <View style={styles.rulesList}>
-              {/* Check-in/Check-out if structured */}
               {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).checkIn && (
                 <View style={styles.ruleItem}>
                   <ClockIcon size={18} color="#f59e0b" />
@@ -1249,7 +1392,6 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 <UsersIcon size={18} color="#f59e0b" />
                 <Text style={styles.ruleText}>{property.maxGuests} voyageurs maximum</Text>
               </View>
-              {/* Structured rules: smoking, pets, parties */}
               {property.houseRules && typeof property.houseRules === 'object' && !Array.isArray(property.houseRules) && (property.houseRules as any).smoking === false && (
                 <View style={styles.ruleItem}>
                   <XIcon size={18} color="#ef4444" />
@@ -1268,25 +1410,25 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <Text style={styles.ruleText}>Fêtes interdites</Text>
                 </View>
               )}
-              {/* Fallback: string or array houseRules from backend */}
-              {property.houseRules && typeof property.houseRules === 'string' && (
+              {typeof property.houseRules === 'string' && (
                 <View style={styles.ruleItem}>
                   <CheckCircleIcon size={18} color="#f59e0b" />
                   <Text style={styles.ruleText}>{property.houseRules}</Text>
                 </View>
               )}
-              {Array.isArray(property.houseRules) && (property.houseRules as string[]).map((rule: string, i: number) => (
-                <View key={i} style={styles.ruleItem}>
-                  <CheckCircleIcon size={18} color="#f59e0b" />
-                  <Text style={styles.ruleText}>{rule}</Text>
-                </View>
-              ))}
+              {Array.isArray(property.houseRules) &&
+                (property.houseRules as string[]).map((rule: string, i: number) => (
+                  <View key={i} style={styles.ruleItem}>
+                    <CheckCircleIcon size={18} color="#f59e0b" />
+                    <Text style={styles.ruleText}>{rule}</Text>
+                  </View>
+                ))}
             </View>
           </View>
 
           <View style={styles.separator} />
 
-          {/* DISPONIBILITÉS */}
+          {/* AVAILABILITY (A) */}
           <TouchableOpacity style={styles.availabilitySection} onPress={() => setShowCalendarModal(true)} activeOpacity={0.7}>
             <View style={styles.availabilityContent}>
               <Text style={styles.sectionTitle}>Disponibilités</Text>
@@ -1303,7 +1445,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
           <View style={styles.separator} />
 
-          {/* CONDITIONS D'ANNULATION */}
+          {/* CANCELLATION (A) */}
           <View style={styles.cancellationSection}>
             <Text style={styles.sectionTitle}>Conditions d'annulation</Text>
             <Text style={styles.cancellationText}>
@@ -1311,21 +1453,22 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 ? "Ajoutez vos dates de voyage pour connaître les conditions d'annulation de ce séjour."
                 : isFreeCancellationAvailable()
                   ? `Annulation gratuite avant le ${formatLongDate(getFreeCancellationDate()!)}. Si vous annulez avant l'arrivée prévue le ${formatLongDate(checkInDate)}, vous aurez droit à un remboursement partiel.`
-                  : `Si vous annulez avant l'arrivée prévue le ${formatLongDate(checkInDate)}, vous aurez droit à un remboursement partiel. Passé ce délai, cette réservation n'est pas remboursable.`
-              }
+                  : `Si vous annulez avant l'arrivée prévue le ${formatLongDate(checkInDate)}, vous aurez droit à un remboursement partiel. Passé ce délai, cette réservation n'est pas remboursable.`}
             </Text>
             <TouchableOpacity
               style={[styles.learnMoreBtn, (!checkInDate || !checkOutDate) && styles.learnMoreBtnDisabled]}
               onPress={() => checkInDate && checkOutDate && setShowCancellationModal(true)}
               disabled={!checkInDate || !checkOutDate}
             >
-              <Text style={[styles.learnMoreBtnText, (!checkInDate || !checkOutDate) && styles.learnMoreBtnTextDisabled]}>En savoir plus</Text>
+              <Text style={[styles.learnMoreBtnText, (!checkInDate || !checkOutDate) && styles.learnMoreBtnTextDisabled]}>
+                En savoir plus
+              </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.separator} />
 
-          {/* SIGNALER */}
+          {/* REPORT (A) */}
           <TouchableOpacity style={styles.reportButton} onPress={() => { resetReport(); setShowReportModal(true); }} activeOpacity={0.7}>
             <FlagIcon size={16} color="rgba(245, 158, 11, 0.7)" />
             <Text style={styles.reportButtonText}>Signaler cette annonce</Text>
@@ -1335,7 +1478,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </ScrollView>
 
-      {/* BARRE DE RÉSERVATION FIXE */}
+      {/* BOOKING BAR (A) */}
       <View style={[styles.bookingBar, { paddingBottom: insets.bottom || 16 }]}>
         <View style={styles.bookingBarContent}>
           <View style={styles.bookingBarLeft}>
@@ -1343,7 +1486,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               <>
                 <TouchableOpacity onPress={() => setShowPriceDetailModal(true)} activeOpacity={0.7}>
                   <Text style={styles.bookingPriceWithDates}>
-                    <Text style={[styles.bookingPriceBold, styles.bookingPriceUnderline]}>{formatPrice(finalTotal)} {currency}</Text>
+                    <Text style={[styles.bookingPriceBold, styles.bookingPriceUnderline]}>
+                      {formatPrice(finalTotal)} {currency}
+                    </Text>
                   </Text>
                 </TouchableOpacity>
                 <Text style={styles.bookingDatesInfo}>
@@ -1362,11 +1507,12 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <Text style={styles.bookingPriceBold}>
                     {priceDisplayMode === 'night' || locationType === 'short'
                       ? formatPrice(pricePerNight)
-                      : formatPrice(pricePerMonth)
-                    } {currency}
+                      : formatPrice(pricePerMonth)}{' '}
+                    {currency}
                   </Text>
                   <Text style={styles.bookingPriceUnit}>
-                    {' / '}{priceDisplayMode === 'night' || locationType === 'short' ? 'nuit' : 'mois'}
+                    {' / '}
+                    {priceDisplayMode === 'night' || locationType === 'short' ? 'nuit' : 'mois'}
                   </Text>
                 </Text>
                 {ratings && ratings.count > 0 && (
@@ -1378,6 +1524,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               </>
             )}
           </View>
+
           <TouchableOpacity style={styles.bookingButton} activeOpacity={0.9} onPress={handleReservePress}>
             <LinearGradient
               colors={['#facc15', '#f59e0b']}
@@ -1395,20 +1542,27 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </View>
 
-      {/* ======= MODAL CALENDRIER ======= */}
+
+      /* ======= MODAL CALENDRIER ======= */
       <Modal visible={showCalendarModal} animationType="slide" transparent onRequestClose={() => setShowCalendarModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowCalendarModal(false)} />
           <View style={styles.calendarSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.calendarSheetGradient}>
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
               <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowCalendarModal(false)}>
                 <XIcon size={24} color="#fbbf24" />
               </TouchableOpacity>
 
               <View style={styles.calendarHeader}>
                 <Text style={styles.calendarTitle}>
-                  {checkInDate && checkOutDate ? `${nights} nuit${nights > 1 ? 's' : ''}` : checkInDate ? 'Sélectionnez la date de départ' : "Sélectionnez la date d'arrivée"}
+                  {checkInDate && checkOutDate
+                    ? `${nights} nuit${nights > 1 ? 's' : ''}`
+                    : checkInDate
+                      ? 'Sélectionnez la date de départ'
+                      : "Sélectionnez la date d'arrivée"}
                 </Text>
                 <Text style={styles.calendarSubtitle}>
                   {checkInDate && checkOutDate ? `${formatPrice(totalPrice)} FCFA au total` : 'Ajoutez vos dates pour le prix exact'}
@@ -1433,24 +1587,33 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 </View>
 
                 <View style={styles.monthNav}>
-                  <TouchableOpacity style={styles.monthNavBtn} onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}>
+                  <TouchableOpacity
+                    style={styles.monthNavBtn}
+                    onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
+                  >
                     <ChevronLeftIcon size={18} color="#fbbf24" />
                   </TouchableOpacity>
                   <Text style={styles.monthNavText}>{calendarMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</Text>
-                  <TouchableOpacity style={styles.monthNavBtn} onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}>
+                  <TouchableOpacity
+                    style={styles.monthNavBtn}
+                    onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
+                  >
                     <ChevronRightIcon size={18} color="#fbbf24" />
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.weekDays}>
                   {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
-                    <Text key={day} style={styles.weekDay}>{day}</Text>
+                    <Text key={day} style={styles.weekDay}>
+                      {day}
+                    </Text>
                   ))}
                 </View>
 
                 <View style={styles.calendarGrid}>
                   {generateCalendarDays(calendarMonth).map((date, index) => {
                     if (!date) return <View key={`empty-${index}`} style={styles.calendarDayEmpty} />;
+
                     const isPast = isDateInPast(date);
                     const isUnavail = isDateUnavailable(date);
                     const selected = isDateSelected(date);
@@ -1472,13 +1635,15 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                         disabled={isDisabled}
                         activeOpacity={0.7}
                       >
-                        <Text style={[
-                          styles.calendarDayText,
-                          isPast && styles.calendarDayTextPast,
-                          isUnavail && styles.calendarDayTextUnavailable,
-                          (selected === 'start' || selected === 'end') && styles.calendarDayTextSelected,
-                          inRange && styles.calendarDayTextInRange,
-                        ]}>
+                        <Text
+                          style={[
+                            styles.calendarDayText,
+                            isPast && styles.calendarDayTextPast,
+                            isUnavail && styles.calendarDayTextUnavailable,
+                            (selected === 'start' || selected === 'end') && styles.calendarDayTextSelected,
+                            inRange && styles.calendarDayTextInRange,
+                          ]}
+                        >
                           {date.getDate()}
                         </Text>
                       </TouchableOpacity>
@@ -1487,10 +1652,19 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 </View>
 
                 <View style={styles.calendarLegend}>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, styles.legendDotStart]} /><Text style={styles.legendText}>Arrivée</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, styles.legendDotEnd]} /><Text style={styles.legendText}>Départ</Text></View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, styles.legendDotStart]} />
+                    <Text style={styles.legendText}>Arrivée</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, styles.legendDotEnd]} />
+                    <Text style={styles.legendText}>Départ</Text>
+                  </View>
                   {checkInDate && checkOutDate && (
-                    <View style={styles.legendItem}><View style={[styles.legendDot, styles.legendDotRange]} /><Text style={styles.legendText}>Séjour</Text></View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, styles.legendDotRange]} />
+                      <Text style={styles.legendText}>Séjour</Text>
+                    </View>
                   )}
                 </View>
               </ScrollView>
@@ -1504,8 +1678,13 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   onPress={() => checkInDate && checkOutDate && setShowCalendarModal(false)}
                   disabled={!checkInDate || !checkOutDate}
                 >
-                  <LinearGradient colors={checkInDate && checkOutDate ? ['#facc15', '#f59e0b'] : ['#78350f', '#78350f']} style={styles.calendarValidateBtnGradient}>
-                    <Text style={[styles.calendarValidateBtnText, !(checkInDate && checkOutDate) && styles.calendarValidateBtnTextDisabled]}>Valider</Text>
+                  <LinearGradient
+                    colors={checkInDate && checkOutDate ? ['#facc15', '#f59e0b'] : ['#78350f', '#78350f']}
+                    style={styles.calendarValidateBtnGradient}
+                  >
+                    <Text style={[styles.calendarValidateBtnText, !(checkInDate && checkOutDate) && styles.calendarValidateBtnTextDisabled]}>
+                      Valider
+                    </Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -1514,14 +1693,16 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL RÉSERVATION ======= */}
+      /* ======= MODAL RÉSERVATION ======= */
       <Modal visible={showBookingModal} animationType="slide" transparent onRequestClose={() => setShowBookingModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowBookingModal(false)} />
           <View style={styles.bookingSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.bookingSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
               <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowBookingModal(false)}>
                 <XIcon size={24} color="#fbbf24" />
               </TouchableOpacity>
@@ -1533,7 +1714,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <View style={styles.bookingSummaryCard}>
                     <Image source={{ uri: images[0] }} style={styles.bookingSummaryImage} />
                     <View style={styles.bookingSummaryInfo}>
-                      <Text style={styles.bookingSummaryTitle} numberOfLines={2}>{property.title}</Text>
+                      <Text style={styles.bookingSummaryTitle} numberOfLines={2}>
+                        {property.title}
+                      </Text>
                       {ratings && ratings.count > 0 && (
                         <View style={styles.bookingSummaryRating}>
                           <StarIcon size={14} color="#facc15" filled />
@@ -1550,7 +1733,6 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                     </View>
                   )}
 
-                  {/* Dates */}
                   <View style={styles.bookingSectionItem}>
                     <View style={styles.bookingSectionRow}>
                       <View>
@@ -1559,35 +1741,51 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                           {checkInDate && checkOutDate ? `${formatLongDate(checkInDate)} - ${formatLongDate(checkOutDate)}` : 'Aucune date'}
                         </Text>
                       </View>
-                      <TouchableOpacity style={styles.bookingModifyBtn} onPress={() => { setShowBookingModal(false); setTimeout(() => setShowCalendarModal(true), 300); }}>
+                      <TouchableOpacity
+                        style={styles.bookingModifyBtn}
+                        onPress={() => {
+                          setShowBookingModal(false);
+                          setTimeout(() => setShowCalendarModal(true), 300);
+                        }}
+                      >
                         <Text style={styles.bookingModifyBtnText}>Modifier</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
 
-                  {/* Voyageurs */}
                   <View style={styles.bookingSectionItem}>
                     <View style={styles.bookingSectionRow}>
                       <View>
                         <Text style={styles.bookingSectionTitle}>Voyageurs</Text>
-                        <Text style={styles.bookingSectionValue}>{guestsCount} {guestsCount > 1 ? 'adultes' : 'adulte'}</Text>
+                        <Text style={styles.bookingSectionValue}>
+                          {guestsCount} {guestsCount > 1 ? 'adultes' : 'adulte'}
+                        </Text>
                       </View>
                       <View style={styles.guestsCounter}>
-                        <TouchableOpacity style={[styles.guestsBtn, guestsCount <= 1 && styles.guestsBtnDisabled]} onPress={() => setGuestsCount(Math.max(1, guestsCount - 1))} disabled={guestsCount <= 1}>
+                        <TouchableOpacity
+                          style={[styles.guestsBtn, guestsCount <= 1 && styles.guestsBtnDisabled]}
+                          onPress={() => setGuestsCount(Math.max(1, guestsCount - 1))}
+                          disabled={guestsCount <= 1}
+                        >
                           <Text style={[styles.guestsBtnText, guestsCount <= 1 && styles.guestsBtnTextDisabled]}>−</Text>
                         </TouchableOpacity>
                         <Text style={styles.guestsValue}>{guestsCount}</Text>
-                        <TouchableOpacity style={[styles.guestsBtn, guestsCount >= property.maxGuests && styles.guestsBtnDisabled]} onPress={() => setGuestsCount(Math.min(property.maxGuests, guestsCount + 1))} disabled={guestsCount >= property.maxGuests}>
+                        <TouchableOpacity
+                          style={[styles.guestsBtn, guestsCount >= property.maxGuests && styles.guestsBtnDisabled]}
+                          onPress={() => setGuestsCount(Math.min(property.maxGuests, guestsCount + 1))}
+                          disabled={guestsCount >= property.maxGuests}
+                        >
                           <Text style={[styles.guestsBtnText, guestsCount >= property.maxGuests && styles.guestsBtnTextDisabled]}>+</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
                   </View>
 
-                  {/* Prix */}
                   <View style={styles.priceDetailBox}>
                     <View style={styles.priceDetailRow}>
-                      <Text style={styles.priceDetailLabel}>{nights} nuit{nights > 1 ? 's' : ''} x {formatPrice(pricePerNight)} FCFA</Text>
+                      <Text style={styles.priceDetailLabel}>
+                        {nights} nuit{nights > 1 ? 's' : ''} x {formatPrice(pricePerNight)} FCFA
+                      </Text>
                       <Text style={styles.priceDetailValue}>{formatPrice(subtotal)} FCFA</Text>
                     </View>
                     <View style={styles.priceDetailRow}>
@@ -1601,10 +1799,10 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                     </View>
                   </View>
 
-                  {/* Options paiement si 30j */}
                   {isBooking30DaysAhead() && (
                     <View style={styles.paymentOptions}>
                       <Text style={styles.paymentOptionsTitle}>Choisissez quand vous souhaitez payer</Text>
+
                       <TouchableOpacity style={[styles.paymentOption, paymentOption === 'now' && styles.paymentOptionActive]} onPress={() => setPaymentOption('now')}>
                         <View style={styles.paymentOptionContent}>
                           <Text style={styles.paymentOptionText}>Payer {formatPrice(totalPrice)} FCFA maintenant</Text>
@@ -1613,7 +1811,11 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                           {paymentOption === 'now' && <View style={styles.paymentRadioDot} />}
                         </View>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.paymentOption, paymentOption === 'later' && styles.paymentOptionActive]} onPress={() => setPaymentOption('later')}>
+
+                      <TouchableOpacity
+                        style={[styles.paymentOption, paymentOption === 'later' && styles.paymentOptionActive]}
+                        onPress={() => setPaymentOption('later')}
+                      >
                         <View style={styles.paymentOptionContent}>
                           <Text style={styles.paymentOptionText}>Réserver maintenant, payer plus tard</Text>
                           <Text style={styles.paymentOptionSubtext}>Paiement requis 14 jours avant l'arrivée</Text>
@@ -1628,7 +1830,12 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               </ScrollView>
 
               <View style={styles.bookingSheetFooter}>
-                <TouchableOpacity style={[styles.bookingConfirmBtn, bookingLoading && { opacity: 0.6 }]} activeOpacity={0.9} onPress={handleBookingConfirm} disabled={bookingLoading}>
+                <TouchableOpacity
+                  style={[styles.bookingConfirmBtn, bookingLoading && { opacity: 0.6 }]}
+                  activeOpacity={0.9}
+                  onPress={handleBookingConfirm}
+                  disabled={bookingLoading}
+                >
                   <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.bookingConfirmBtnGradient}>
                     <Text style={styles.bookingConfirmBtnText}>
                       {bookingLoading ? 'Création...' : paymentOption === 'now' ? 'Continuer vers le paiement' : 'Confirmer la réservation'}
@@ -1641,7 +1848,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL VIEWER D'IMAGES ======= */}
+      /* ======= MODAL VIEWER D'IMAGES ======= */
       <Modal visible={showImageViewer} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.viewerContainer}>
           <View style={[styles.viewerHeader, { paddingTop: insets.top + 8 }]}>
@@ -1649,49 +1856,97 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               <ArrowLeftIcon size={20} color="#333" />
             </TouchableOpacity>
             <View style={styles.viewerHeaderRight}>
-              <TouchableOpacity style={styles.viewerHeaderBtn}><Share2Icon size={18} color="#333" /></TouchableOpacity>
+              <TouchableOpacity style={styles.viewerHeaderBtn}>
+                <Share2Icon size={18} color="#333" />
+              </TouchableOpacity>
               <TouchableOpacity style={styles.viewerHeaderBtn} onPress={handleFavorite}>
                 <HeartIcon size={18} color={isFavorite ? '#facc15' : '#333'} filled={isFavorite} />
               </TouchableOpacity>
             </View>
           </View>
+
           <ScrollView style={styles.viewerScroll} contentContainerStyle={styles.viewerScrollContent} showsVerticalScrollIndicator={false}>
             {(() => {
               const elements: React.ReactNode[] = [];
               let idx = 0;
               let blockCount = 0;
+
               while (idx < images.length) {
                 const isBlockA = blockCount % 2 === 0;
+
                 if (isBlockA) {
-                  const img1 = images[idx]; const img2 = images[idx + 1]; const img3 = images[idx + 2];
+                  const img1 = images[idx];
+                  const img2 = images[idx + 1];
+                  const img3 = images[idx + 2];
+
                   if (!img2 && !img3) {
-                    elements.push(<View key={`s-${idx}`} style={styles.viewerImageSingle}><Image source={{ uri: img1 }} style={styles.viewerImageFull} /></View>);
+                    elements.push(
+                      <View key={`single-${idx}`} style={styles.viewerImageSingle}>
+                        <Image source={{ uri: img1 }} style={styles.viewerImageFull} />
+                      </View>
+                    );
                     idx += 1;
                   } else if (!img3) {
-                    elements.push(<View key={`p-${idx}`} style={styles.viewerRow}><View style={styles.viewerHalf}><Image source={{ uri: img1 }} style={styles.viewerImageFull} /></View><View style={styles.viewerHalf}><Image source={{ uri: img2 }} style={styles.viewerImageFull} /></View></View>);
+                    elements.push(
+                      <View key={`pair-${idx}`} style={styles.viewerRow}>
+                        <View style={styles.viewerHalf}>
+                          <Image source={{ uri: img1 }} style={styles.viewerImageFull} />
+                        </View>
+                        <View style={styles.viewerHalf}>
+                          <Image source={{ uri: img2 }} style={styles.viewerImageFull} />
+                        </View>
+                      </View>
+                    );
                     idx += 2;
                   } else {
                     elements.push(
-                      <View key={`bA-${idx}`} style={styles.viewerBlockA}>
-                        <View style={styles.viewerBlockALeft}><View style={styles.viewerBlockATopImg}><Image source={{ uri: img1 }} style={styles.viewerImageFull} /></View><View style={styles.viewerBlockABottomImg}><Image source={{ uri: img2 }} style={styles.viewerImageFull} /></View></View>
-                        <View style={styles.viewerBlockARight}><Image source={{ uri: img3 }} style={styles.viewerImageFull} /></View>
+                      <View key={`blockA-${idx}`} style={styles.viewerBlockA}>
+                        <View style={styles.viewerBlockALeft}>
+                          <View style={styles.viewerBlockATopImg}>
+                            <Image source={{ uri: img1 }} style={styles.viewerImageFull} />
+                          </View>
+                          <View style={styles.viewerBlockABottomImg}>
+                            <Image source={{ uri: img2 }} style={styles.viewerImageFull} />
+                          </View>
+                        </View>
+                        <View style={styles.viewerBlockARight}>
+                          <Image source={{ uri: img3 }} style={styles.viewerImageFull} />
+                        </View>
                       </View>
                     );
                     idx += 3;
                   }
                 } else {
-                  const img1 = images[idx]; const img2 = images[idx + 1]; const img3 = images[idx + 2];
-                  if (img1) { elements.push(<View key={`w-${idx}`} style={styles.viewerImageWide}><Image source={{ uri: img1 }} style={styles.viewerImageFull} /></View>); idx += 1; }
+                  const img1 = images[idx];
+                  const img2 = images[idx + 1];
+                  const img3 = images[idx + 2];
+
+                  if (img1) {
+                    elements.push(
+                      <View key={`wide-${idx}`} style={styles.viewerImageWide}>
+                        <Image source={{ uri: img1 }} style={styles.viewerImageFull} />
+                      </View>
+                    );
+                    idx += 1;
+                  }
+
                   if (img2) {
                     elements.push(
-                      <View key={`pB-${idx}`} style={styles.viewerRowSmall}>
-                        <View style={styles.viewerHalf}><Image source={{ uri: img2 }} style={styles.viewerImageFull} /></View>
-                        {img3 && <View style={styles.viewerHalf}><Image source={{ uri: img3 }} style={styles.viewerImageFull} /></View>}
+                      <View key={`pairB-${idx}`} style={styles.viewerRowSmall}>
+                        <View style={styles.viewerHalf}>
+                          <Image source={{ uri: img2 }} style={styles.viewerImageFull} />
+                        </View>
+                        {img3 && (
+                          <View style={styles.viewerHalf}>
+                            <Image source={{ uri: img3 }} style={styles.viewerImageFull} />
+                          </View>
+                        )}
                       </View>
                     );
                     idx += img3 ? 2 : 1;
                   }
                 }
+
                 blockCount++;
               }
               return elements;
@@ -1700,17 +1955,21 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL DESCRIPTION ======= */}
+      /* ======= MODAL DESCRIPTION ======= */
       <Modal visible={showDescriptionModal} animationType="slide" transparent onRequestClose={() => setShowDescriptionModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowDescriptionModal(false)} />
           <View style={styles.bottomSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#451a03']} style={styles.bottomSheetGradient}>
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
               <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowDescriptionModal(false)}>
                 <XIcon size={24} color="#fbbf24" />
               </TouchableOpacity>
-              <View style={styles.bottomSheetHeader}><Text style={styles.bottomSheetTitle}>À propos de ce logement</Text></View>
+              <View style={styles.bottomSheetHeader}>
+                <Text style={styles.bottomSheetTitle}>À propos de ce logement</Text>
+              </View>
               <ScrollView style={styles.bottomSheetScroll} contentContainerStyle={styles.bottomSheetScrollContent} showsVerticalScrollIndicator={false}>
                 <Text style={styles.bottomSheetDescription}>{property.description}</Text>
               </ScrollView>
@@ -1719,16 +1978,19 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL COMMENTAIRES ======= */}
+      /* ======= MODAL COMMENTAIRES ======= */
       <Modal visible={showReviewsModal} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.fullScreenModal}>
           <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
           <KongoPattern />
           <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
-            <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setShowReviewsModal(false)}><ArrowLeftIcon size={20} color="#fbbf24" /></TouchableOpacity>
+            <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setShowReviewsModal(false)}>
+              <ArrowLeftIcon size={20} color="#fbbf24" />
+            </TouchableOpacity>
             <Text style={styles.modalHeaderTitle}>Commentaires</Text>
             <View style={{ width: 40 }} />
           </View>
+
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.reviewsModalHeader}>
               <StarIcon size={24} color="#facc15" filled />
@@ -1736,35 +1998,41 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               <Text style={styles.reviewsModalDot}>·</Text>
               <Text style={styles.reviewsModalCount}>{ratings?.count ?? 0} commentaires</Text>
             </View>
-            {reviews.map((review) => (
+
+            {reviews.map(review => (
               <View key={review.id} style={styles.reviewModalCard}>
                 <View style={styles.reviewCardHeader}>
                   {review.reviewer?.avatarUrl ? (
                     <Image source={{ uri: review.reviewer.avatarUrl }} style={styles.reviewModalAvatar} />
                   ) : (
                     <View style={[styles.reviewModalAvatar, styles.reviewAvatarFallback]}>
-                      <Text style={styles.reviewAvatarInitials}>{review.reviewer?.firstName?.[0]}{review.reviewer?.lastName?.[0]}</Text>
+                      <Text style={styles.reviewAvatarInitials}>
+                        {review.reviewer?.firstName?.[0]}
+                        {review.reviewer?.lastName?.[0]}
+                      </Text>
                     </View>
                   )}
                   <View style={styles.reviewAuthorInfo}>
-                    <Text style={styles.reviewModalAuthor}>{review.reviewer ? `${review.reviewer.firstName} ${review.reviewer.lastName}` : 'Invité'}</Text>
-                    <Text style={styles.reviewModalMemberSince}>{new Date(review.createdAt).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</Text>
+                    <Text style={styles.reviewModalAuthor}>
+                      {review.reviewer ? `${review.reviewer.firstName} ${review.reviewer.lastName}` : 'Invité'}
+                    </Text>
+                    <Text style={styles.reviewModalMemberSince}>
+                      {new Date(review.createdAt).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.reviewStars}>
-                  {[...Array(5)].map((_, i) => <StarIcon key={i} size={14} color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'} filled={i < (review.overallRating ?? 0)} />)}
+                  {[...Array(5)].map((_, i) => (
+                    <StarIcon key={i} size={14} color={i < (review.overallRating ?? 0) ? '#facc15' : '#78350f'} filled={i < (review.overallRating ?? 0)} />
+                  ))}
                   <Text style={styles.reviewDate}>· {formatRelativeDate(review.createdAt)}</Text>
                 </View>
                 <Text style={styles.reviewModalComment}>{review.comment}</Text>
               </View>
             ))}
+
             {!allReviewsLoaded && (ratings?.count ?? 0) > reviews.length && (
-              <TouchableOpacity
-                style={[styles.showAllReviewsBtn, loadingMoreReviews && { opacity: 0.6 }]}
-                onPress={loadMoreReviews}
-                disabled={loadingMoreReviews}
-                activeOpacity={0.8}
-              >
+              <TouchableOpacity style={[styles.showAllReviewsBtn, loadingMoreReviews && { opacity: 0.6 }]} onPress={loadMoreReviews} disabled={loadingMoreReviews} activeOpacity={0.8}>
                 {loadingMoreReviews ? (
                   <ActivityIndicator size="small" color="#fbbf24" />
                 ) : (
@@ -1778,16 +2046,19 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL ÉQUIPEMENTS ======= */}
+      /* ======= MODAL ÉQUIPEMENTS ======= */
       <Modal visible={showAmenitiesModal} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.fullScreenModal}>
           <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
           <KongoPattern />
           <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
-            <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setShowAmenitiesModal(false)}><ArrowLeftIcon size={20} color="#fbbf24" /></TouchableOpacity>
+            <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setShowAmenitiesModal(false)}>
+              <ArrowLeftIcon size={20} color="#fbbf24" />
+            </TouchableOpacity>
             <Text style={styles.modalHeaderTitle}>Équipements</Text>
             <View style={{ width: 40 }} />
           </View>
+
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Text style={styles.amenitiesModalSubtitle}>Ce logement propose {property.equipments?.length ?? 0} équipements</Text>
             {(property.equipments || []).map((eq: EquipmentInfo) => {
@@ -1795,7 +2066,9 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
               const isAvailable = eq.available !== false;
               return (
                 <View key={eq.id} style={styles.amenityModalItem}>
-                  <View style={styles.amenityModalIconBox}><IconComp size={24} color={isAvailable ? '#fbbf24' : '#78350f'} /></View>
+                  <View style={styles.amenityModalIconBox}>
+                    <IconComp size={24} color={isAvailable ? '#fbbf24' : '#78350f'} />
+                  </View>
                   <Text style={[styles.amenityModalName, !isAvailable && styles.amenityModalNameDisabled]}>{eq.name}</Text>
                 </View>
               );
@@ -1804,7 +2077,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL HÔTE ======= */}
+      /* ======= MODAL HÔTE ======= */
       <Modal visible={showHostModal} animationType="slide" transparent onRequestClose={() => setShowHostModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowHostModal(false)} />
@@ -1818,6 +2091,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <XIcon size={20} color="#fbbf24" />
                 </TouchableOpacity>
               </View>
+
               <ScrollView style={styles.hostModalScroll} contentContainerStyle={styles.hostModalScrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.hostProfileCard}>
                   <View style={styles.hostProfileLeft}>
@@ -1826,7 +2100,10 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                         <Image source={{ uri: property.host.avatarUrl }} style={styles.hostProfileAvatar} />
                       ) : (
                         <View style={[styles.hostProfileAvatar, styles.hostAvatarFallback]}>
-                          <Text style={[styles.hostAvatarInitials, { fontSize: 28 }]}>{property.host.firstName?.[0]}{property.host.lastName?.[0]}</Text>
+                          <Text style={[styles.hostAvatarInitials, { fontSize: 28 }]}>
+                            {property.host.firstName?.[0]}
+                            {property.host.lastName?.[0]}
+                          </Text>
                         </View>
                       )}
                       <View style={styles.hostProfileVerifiedBadge}>
@@ -1838,6 +2115,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                     <Text style={styles.hostProfileName}>{property.host.firstName}</Text>
                     <Text style={styles.hostProfileRole}>Hôte</Text>
                   </View>
+
                   <View style={styles.hostProfileStats}>
                     <View style={styles.hostStatItem}>
                       <Text style={styles.hostStatValue}>{ratings?.count ?? 0}</Text>
@@ -1858,36 +2136,42 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                   <View style={styles.hostInfoItem}>
                     <ClockIcon size={20} color="#fbbf24" />
                     <View style={styles.hostInfoContent}>
-                      <Text style={styles.hostInfoTitle}>Taux de réponse : {property.host.responseRate ?? 98}%</Text>
-                      <Text style={styles.hostInfoSubtitle}>Répond généralement en {property.host.responseTime ?? "moins d'une heure"}</Text>
+                      <Text style={styles.hostInfoTitle}>Taux de réponse : {(property.host as any).responseRate ?? 98}%</Text>
+                      <Text style={styles.hostInfoSubtitle}>Répond généralement en {(property.host as any).responseTime ?? "moins d'une heure"}</Text>
                     </View>
                   </View>
                   <View style={styles.hostInfoItem}>
                     <GlobeIcon size={20} color="#fbbf24" />
                     <View style={styles.hostInfoContent}>
                       <Text style={styles.hostInfoTitle}>Langues</Text>
-                      <Text style={styles.hostInfoSubtitle}>{Array.isArray(property.host.languages) ? property.host.languages.join(', ') : 'Français, Lingala'}</Text>
+                      <Text style={styles.hostInfoSubtitle}>
+                        {Array.isArray((property.host as any).languages) ? (property.host as any).languages.join(', ') : 'Français, Lingala'}
+                      </Text>
                     </View>
                   </View>
                 </View>
 
-                {/* À propos */}
-                {property.host.about ? (
+                {(property.host as any).about ? (
                   <View style={styles.hostAboutSection}>
                     <Text style={styles.hostAboutTitle}>À propos de {property.host.firstName}</Text>
-                    <Text style={styles.hostAboutText}>{property.host.about}</Text>
+                    <Text style={styles.hostAboutText}>{(property.host as any).about}</Text>
                   </View>
                 ) : null}
 
-                {/* Annonces de l'hôte */}
-                {Array.isArray(property.host.listings) && property.host.listings.length > 0 && (
+                {Array.isArray((property.host as any).listings) && (property.host as any).listings.length > 0 && (
                   <View style={styles.hostListingsSection}>
                     <Text style={styles.hostListingsTitle}>Annonces publiées par {property.host.firstName}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hostListingsScroll}>
-                      {property.host.listings.map((listing: any) => (
+                      {(property.host as any).listings.map((listing: any) => (
                         <TouchableOpacity key={listing.id} style={styles.hostListingCard} activeOpacity={0.9}>
-                          {listing.image ? <Image source={{ uri: listing.image }} style={styles.hostListingImage} /> : <View style={[styles.hostListingImage, { backgroundColor: 'rgba(120,53,15,0.5)' }]} />}
-                          <Text style={styles.hostListingTitle} numberOfLines={2}>{listing.title}</Text>
+                          {listing.image ? (
+                            <Image source={{ uri: listing.image }} style={styles.hostListingImage} />
+                          ) : (
+                            <View style={[styles.hostListingImage, { backgroundColor: 'rgba(120,53,15,0.5)' }]} />
+                          )}
+                          <Text style={styles.hostListingTitle} numberOfLines={2}>
+                            {listing.title}
+                          </Text>
                           <View style={styles.hostListingRating}>
                             <StarIcon size={12} color="#facc15" filled />
                             <Text style={styles.hostListingRatingText}>{listing.rating?.toFixed(2) ?? '-'}</Text>
@@ -1909,39 +2193,85 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL SIGNALEMENT ======= */}
-      <Modal visible={showReportModal} animationType="slide" transparent onRequestClose={() => { resetReport(); setShowReportModal(false); }}>
+      /* ======= MODAL SIGNALEMENT ======= */
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          resetReport();
+          setShowReportModal(false);
+        }}
+      >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => { resetReport(); setShowReportModal(false); }} />
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              resetReport();
+              setShowReportModal(false);
+            }}
+          />
           <View style={styles.reportSheetFull}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.reportSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
+
               {(reportStep === 'subreason' || reportStep === 'details' || reportStep === 'info') ? (
-                <TouchableOpacity style={styles.bottomSheetBackBtn} onPress={handleReportBack}><ArrowLeftIcon size={24} color="#fbbf24" /></TouchableOpacity>
+                <TouchableOpacity style={styles.bottomSheetBackBtn} onPress={handleReportBack}>
+                  <ArrowLeftIcon size={24} color="#fbbf24" />
+                </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => { resetReport(); setShowReportModal(false); }}><XIcon size={24} color="#fbbf24" /></TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bottomSheetCloseBtn}
+                  onPress={() => {
+                    resetReport();
+                    setShowReportModal(false);
+                  }}
+                >
+                  <XIcon size={24} color="#fbbf24" />
+                </TouchableOpacity>
               )}
 
               <ScrollView style={styles.reportScrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.reportContent}>
                   {reportStep === 'submitted' && (
                     <View style={styles.reportSubmitted}>
-                      <View style={styles.reportSuccessIcon}><CheckIcon size={40} color="#22c55e" /></View>
+                      <View style={styles.reportSuccessIcon}>
+                        <CheckIcon size={40} color="#22c55e" />
+                      </View>
                       <Text style={styles.reportSubmittedTitle}>Merci pour votre signalement</Text>
-                      <Text style={styles.reportSubmittedText}>Nous avons bien reçu votre signalement et nous allons l'examiner dans les plus brefs délais.</Text>
-                      <TouchableOpacity style={styles.reportCloseBtn} onPress={() => { resetReport(); setShowReportModal(false); }} activeOpacity={0.9}>
-                        <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.reportCloseBtnGradient}><Text style={styles.reportCloseBtnText}>Fermer</Text></LinearGradient>
+                      <Text style={styles.reportSubmittedText}>
+                        Nous avons bien reçu votre signalement et nous allons l'examiner dans les plus brefs délais.
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.reportCloseBtn}
+                        onPress={() => {
+                          resetReport();
+                          setShowReportModal(false);
+                        }}
+                        activeOpacity={0.9}
+                      >
+                        <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.reportCloseBtnGradient}>
+                          <Text style={styles.reportCloseBtnText}>Fermer</Text>
+                        </LinearGradient>
                       </TouchableOpacity>
                     </View>
                   )}
+
                   {reportStep === 'reason' && (
                     <>
                       <Text style={styles.reportTitle}>Pourquoi signalez-vous cette annonce ?</Text>
                       <Text style={styles.reportSubtitle}>Ces informations ne seront pas communiquées à l'hôte.</Text>
                       <View style={styles.reportReasons}>
                         {reportReasons.map((reason, index) => (
-                          <TouchableOpacity key={reason.id} style={[styles.reportReasonItem, index < reportReasons.length - 1 && styles.reportReasonBorder]} onPress={() => handleReportReasonSelect(reason.id)}>
+                          <TouchableOpacity
+                            key={reason.id}
+                            style={[styles.reportReasonItem, index < reportReasons.length - 1 && styles.reportReasonBorder]}
+                            onPress={() => handleReportReasonSelect(reason.id)}
+                          >
                             <Text style={styles.reportReasonText}>{reason.label}</Text>
                             <ChevronRightIcon size={20} color="#92400e" />
                           </TouchableOpacity>
@@ -1949,14 +2279,24 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                       </View>
                     </>
                   )}
+
                   {reportStep === 'subreason' && (
                     <>
                       <Text style={styles.reportTitle}>
-                        {selectedReportReason === 'scam' ? "Pourquoi pensez-vous qu'il s'agit d'une arnaque ?" : selectedReportReason === 'offensive' ? "Pourquoi la trouvez-vous offensante ?" : "Pourquoi signalez-vous cette annonce ?"}
+                        {selectedReportReason === 'scam'
+                          ? "Pourquoi pensez-vous qu'il s'agit d'une arnaque ?"
+                          : selectedReportReason === 'offensive'
+                            ? "Pourquoi la trouvez-vous offensante ?"
+                            : "Pourquoi signalez-vous cette annonce ?"}
                       </Text>
+
                       <View style={styles.reportReasons}>
                         {getSubReasons().map((subReason: any, index: number) => (
-                          <TouchableOpacity key={subReason.id} style={[styles.reportReasonItem, index < getSubReasons().length - 1 && styles.reportReasonBorder]} onPress={() => handleSubReasonSelect(subReason.id)}>
+                          <TouchableOpacity
+                            key={subReason.id}
+                            style={[styles.reportReasonItem, index < getSubReasons().length - 1 && styles.reportReasonBorder]}
+                            onPress={() => handleSubReasonSelect(subReason.id)}
+                          >
                             <View style={styles.reportSubReasonContent}>
                               <Text style={styles.reportReasonText}>{subReason.label}</Text>
                               {subReason.example ? <Text style={styles.reportSubReasonExample}>{subReason.example}</Text> : null}
@@ -1969,25 +2309,51 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                       </View>
                     </>
                   )}
+
                   {reportStep === 'details' && (
                     <>
                       <Text style={styles.reportTitle}>Décrivez le problème</Text>
                       <Text style={styles.reportSubtitle}>Donnez-nous plus de détails pour nous aider à comprendre le problème.</Text>
-                      <TextInput style={styles.reportTextarea} placeholder="Décrivez le problème en détail..." placeholderTextColor="rgba(245, 158, 11, 0.5)" multiline numberOfLines={6} textAlignVertical="top" value={reportDescription} onChangeText={setReportDescription} />
-                      <TouchableOpacity style={[styles.reportSubmitBtn, !reportDescription.trim() && styles.reportSubmitBtnDisabled]} onPress={() => reportDescription.trim() && setReportStep('submitted')} disabled={!reportDescription.trim()} activeOpacity={0.9}>
+
+                      <TextInput
+                        style={styles.reportTextarea}
+                        placeholder="Décrivez le problème en détail..."
+                        placeholderTextColor="rgba(245, 158, 11, 0.5)"
+                        multiline
+                        numberOfLines={6}
+                        textAlignVertical="top"
+                        value={reportDescription}
+                        onChangeText={setReportDescription}
+                      />
+
+                      <TouchableOpacity
+                        style={[styles.reportSubmitBtn, !reportDescription.trim() && styles.reportSubmitBtnDisabled]}
+                        onPress={() => reportDescription.trim() && setReportStep('submitted')}
+                        disabled={!reportDescription.trim()}
+                        activeOpacity={0.9}
+                      >
                         <LinearGradient colors={reportDescription.trim() ? ['#facc15', '#f59e0b'] : ['#78350f', '#78350f']} style={styles.reportSubmitBtnGradient}>
-                          <Text style={[styles.reportSubmitBtnText, !reportDescription.trim() && styles.reportSubmitBtnTextDisabled]}>Envoyer le signalement</Text>
+                          <Text style={[styles.reportSubmitBtnText, !reportDescription.trim() && styles.reportSubmitBtnTextDisabled]}>
+                            Envoyer le signalement
+                          </Text>
                         </LinearGradient>
                       </TouchableOpacity>
                     </>
                   )}
+
                   {reportStep === 'info' && (
                     <>
                       <Text style={styles.reportTitle}>Contenu illégal</Text>
-                      <Text style={styles.reportInfoText}>Si vous pensez que cette annonce contient du contenu illégal, nous vous encourageons à le signaler aux autorités compétentes de votre pays.</Text>
-                      <Text style={styles.reportInfoText}>VANDA examine tous les signalements et prend les mesures appropriées conformément à nos conditions d'utilisation.</Text>
+                      <Text style={styles.reportInfoText}>
+                        Si vous pensez que cette annonce contient du contenu illégal, nous vous encourageons à le signaler aux autorités compétentes de votre pays.
+                      </Text>
+                      <Text style={styles.reportInfoText}>
+                        VANDA examine tous les signalements et prend les mesures appropriées conformément à nos conditions d'utilisation.
+                      </Text>
                       <TouchableOpacity style={styles.reportSubmitBtn} onPress={() => setReportStep('submitted')} activeOpacity={0.9}>
-                        <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.reportSubmitBtnGradient}><Text style={styles.reportSubmitBtnText}>J'ai compris</Text></LinearGradient>
+                        <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.reportSubmitBtnGradient}>
+                          <Text style={styles.reportSubmitBtnText}>J'ai compris</Text>
+                        </LinearGradient>
                       </TouchableOpacity>
                     </>
                   )}
@@ -1998,16 +2364,20 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL PAIEMENT MOBILE MONEY ======= */}
+      /* ======= MODAL PAIEMENT MOBILE MONEY ======= */
       <Modal visible={showPaymentModal} animationType="slide" transparent onRequestClose={closePaymentModal}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => paymentStatus === 'idle' && closePaymentModal()} />
           <View style={styles.paymentSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.paymentSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
               {paymentStatus === 'idle' && (
-                <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={closePaymentModal}><XIcon size={24} color="#fbbf24" /></TouchableOpacity>
+                <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={closePaymentModal}>
+                  <XIcon size={24} color="#fbbf24" />
+                </TouchableOpacity>
               )}
 
               <ScrollView style={styles.paymentContent} showsVerticalScrollIndicator={false}>
@@ -2030,28 +2400,49 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
 
                 {paymentStatus === 'success' && (
                   <View style={styles.paymentSuccess}>
-                    <View style={styles.paymentSuccessIcon}><CheckIcon size={56} color="#ffffff" /></View>
+                    <View style={styles.paymentSuccessIcon}>
+                      <CheckIcon size={56} color="#ffffff" />
+                    </View>
                     <Text style={styles.paymentSuccessTitle}>Paiement réussi !</Text>
                     <Text style={styles.paymentSuccessText}>Votre réservation est confirmée</Text>
+
                     <View style={styles.paymentReceipt}>
-                      <View style={styles.paymentReceiptRow}><Text style={styles.paymentReceiptLabel}>Montant payé</Text><Text style={styles.paymentReceiptValue}>{formatPrice(finalTotal)} FCFA</Text></View>
-                      <View style={styles.paymentReceiptRow}><Text style={styles.paymentReceiptLabel}>Opérateur</Text><Text style={styles.paymentReceiptValue}>{selectedPaymentMethod === 'mtn' ? 'MTN Mobile Money' : 'Airtel Money'}</Text></View>
-                      <View style={styles.paymentReceiptRow}><Text style={styles.paymentReceiptLabel}>Numéro</Text><Text style={styles.paymentReceiptValue}>+242 {phoneNumber}</Text></View>
+                      <View style={styles.paymentReceiptRow}>
+                        <Text style={styles.paymentReceiptLabel}>Montant payé</Text>
+                        <Text style={styles.paymentReceiptValue}>{formatPrice(finalTotal)} FCFA</Text>
+                      </View>
+                      <View style={styles.paymentReceiptRow}>
+                        <Text style={styles.paymentReceiptLabel}>Opérateur</Text>
+                        <Text style={styles.paymentReceiptValue}>{selectedPaymentMethod === 'mtn' ? 'MTN Mobile Money' : 'Airtel Money'}</Text>
+                      </View>
+                      <View style={styles.paymentReceiptRow}>
+                        <Text style={styles.paymentReceiptLabel}>Numéro</Text>
+                        <Text style={styles.paymentReceiptValue}>+242 {phoneNumber}</Text>
+                      </View>
                     </View>
+
                     <TouchableOpacity style={styles.paymentDoneBtn} onPress={closePaymentModal} activeOpacity={0.9}>
-                      <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.paymentDoneBtnGradient}><Text style={styles.paymentDoneBtnText}>Voir ma réservation</Text></LinearGradient>
+                      <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.paymentDoneBtnGradient}>
+                        <Text style={styles.paymentDoneBtnText}>Voir ma réservation</Text>
+                      </LinearGradient>
                     </TouchableOpacity>
                   </View>
                 )}
 
                 {paymentStatus === 'error' && (
                   <View style={styles.paymentError}>
-                    <View style={styles.paymentErrorIcon}><XIcon size={56} color="#ffffff" /></View>
+                    <View style={styles.paymentErrorIcon}>
+                      <XIcon size={56} color="#ffffff" />
+                    </View>
                     <Text style={styles.paymentErrorTitle}>Échec du paiement</Text>
                     <Text style={styles.paymentErrorText}>{bookingError || 'Une erreur est survenue. Veuillez réessayer.'}</Text>
+
                     <TouchableOpacity style={styles.paymentRetryBtn} onPress={() => { setPaymentStatus('idle'); setBookingError(null); }} activeOpacity={0.9}>
-                      <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.paymentRetryBtnGradient}><Text style={styles.paymentRetryBtnText}>Réessayer</Text></LinearGradient>
+                      <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.paymentRetryBtnGradient}>
+                        <Text style={styles.paymentRetryBtnText}>Réessayer</Text>
+                      </LinearGradient>
                     </TouchableOpacity>
+
                     <TouchableOpacity style={styles.paymentCancelBtn} onPress={closePaymentModal}>
                       <Text style={styles.paymentCancelBtnText}>Annuler</Text>
                     </TouchableOpacity>
@@ -2061,12 +2452,22 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                 {paymentStatus === 'idle' && (
                   <View>
                     <Text style={styles.paymentTitle}>Paiement Mobile Money</Text>
+
                     <View style={styles.paymentSummary}>
                       <Text style={styles.paymentSummaryLabel}>Récapitulatif</Text>
-                      <View style={styles.paymentSummaryRow}><Text style={styles.paymentSummaryText}>{nights} nuits</Text><Text style={styles.paymentSummaryText}>{formatPrice(subtotal)} FCFA</Text></View>
-                      <View style={styles.paymentSummaryRow}><Text style={styles.paymentSummaryText}>Frais de service</Text><Text style={styles.paymentSummaryText}>{formatPrice(serviceFee)} FCFA</Text></View>
+                      <View style={styles.paymentSummaryRow}>
+                        <Text style={styles.paymentSummaryText}>{nights} nuits</Text>
+                        <Text style={styles.paymentSummaryText}>{formatPrice(subtotal)} FCFA</Text>
+                      </View>
+                      <View style={styles.paymentSummaryRow}>
+                        <Text style={styles.paymentSummaryText}>Frais de service</Text>
+                        <Text style={styles.paymentSummaryText}>{formatPrice(serviceFee)} FCFA</Text>
+                      </View>
                       <View style={styles.paymentSummaryDivider} />
-                      <View style={styles.paymentSummaryRow}><Text style={styles.paymentSummaryTotal}>Total</Text><Text style={styles.paymentSummaryTotalValue}>{formatPrice(finalTotal)} FCFA</Text></View>
+                      <View style={styles.paymentSummaryRow}>
+                        <Text style={styles.paymentSummaryTotal}>Total</Text>
+                        <Text style={styles.paymentSummaryTotalValue}>{formatPrice(finalTotal)} FCFA</Text>
+                      </View>
                     </View>
 
                     <Text style={styles.paymentMethodLabel}>Choisissez votre opérateur</Text>
@@ -2074,12 +2475,21 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                       <TouchableOpacity style={[styles.paymentMethodCard, selectedPaymentMethod === 'mtn' && styles.paymentMethodCardActive]} onPress={() => setSelectedPaymentMethod('mtn')}>
                         <MTNMoneyIcon size={48} />
                         <Text style={styles.paymentMethodName}>MTN Mobile Money</Text>
-                        {selectedPaymentMethod === 'mtn' && <View style={[styles.paymentMethodCheck, { backgroundColor: '#ffcc00' }]}><CheckIcon size={14} color="#000" /></View>}
+                        {selectedPaymentMethod === 'mtn' && (
+                          <View style={[styles.paymentMethodCheck, { backgroundColor: '#ffcc00' }]}>
+                            <CheckIcon size={14} color="#000" />
+                          </View>
+                        )}
                       </TouchableOpacity>
+
                       <TouchableOpacity style={[styles.paymentMethodCard, selectedPaymentMethod === 'airtel' && styles.paymentMethodCardActive]} onPress={() => setSelectedPaymentMethod('airtel')}>
                         <AirtelMoneyIcon size={48} />
                         <Text style={styles.paymentMethodName}>Airtel Money</Text>
-                        {selectedPaymentMethod === 'airtel' && <View style={[styles.paymentMethodCheck, { backgroundColor: '#ff0000' }]}><CheckIcon size={14} color="#fff" /></View>}
+                        {selectedPaymentMethod === 'airtel' && (
+                          <View style={[styles.paymentMethodCheck, { backgroundColor: '#ff0000' }]}>
+                            <CheckIcon size={14} color="#fff" />
+                          </View>
+                        )}
                       </TouchableOpacity>
                     </View>
 
@@ -2091,7 +2501,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                         placeholder={selectedPaymentMethod === 'mtn' ? '06 XXX XX XX' : '05 XXX XX XX'}
                         placeholderTextColor="rgba(245, 158, 11, 0.5)"
                         value={phoneNumber}
-                        onChangeText={(text) => setPhoneNumber(text.replace(/\D/g, '').slice(0, 9))}
+                        onChangeText={text => setPhoneNumber(text.replace(/\D/g, '').slice(0, 9))}
                         keyboardType="phone-pad"
                       />
                     </View>
@@ -2107,8 +2517,13 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
                     disabled={!selectedPaymentMethod || phoneNumber.length < 9 || submittingPayment}
                     activeOpacity={0.9}
                   >
-                    <LinearGradient colors={(selectedPaymentMethod && phoneNumber.length >= 9) ? ['#facc15', '#f59e0b'] : ['#78350f', '#78350f']} style={styles.paymentPayBtnGradient}>
-                      <Text style={[styles.paymentPayBtnText, (!selectedPaymentMethod || phoneNumber.length < 9) && styles.paymentPayBtnTextDisabled]}>Payer {formatPrice(finalTotal)} FCFA</Text>
+                    <LinearGradient
+                      colors={selectedPaymentMethod && phoneNumber.length >= 9 ? ['#facc15', '#f59e0b'] : ['#78350f', '#78350f']}
+                      style={styles.paymentPayBtnGradient}
+                    >
+                      <Text style={[styles.paymentPayBtnText, (!selectedPaymentMethod || phoneNumber.length < 9) && styles.paymentPayBtnTextDisabled]}>
+                        Payer {formatPrice(finalTotal)} FCFA
+                      </Text>
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
@@ -2118,32 +2533,71 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL CONDITIONS D'ANNULATION ======= */}
+      /* ======= MODAL CONDITIONS D'ANNULATION ======= */
       <Modal visible={showCancellationModal} animationType="slide" transparent onRequestClose={() => setShowCancellationModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowCancellationModal(false)} />
           <View style={styles.cancellationSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.cancellationSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
-              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowCancellationModal(false)}><XIcon size={24} color="#fbbf24" /></TouchableOpacity>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
+              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowCancellationModal(false)}>
+                <XIcon size={24} color="#fbbf24" />
+              </TouchableOpacity>
+
               <ScrollView style={styles.cancellationContent} showsVerticalScrollIndicator={false}>
-                <Text style={styles.cancellationModalTitle}>Conditions d'annulation</Text>
+                <Text style={styles.cancellationTitle}>Conditions d'annulation</Text>
+
                 {isFreeCancellationAvailable() && checkInDate && (
                   <View style={styles.cancellationFreeBox}>
-                    <View style={styles.cancellationFreeHeader}><CheckCircleIcon size={20} color="#22c55e" /><Text style={styles.cancellationFreeTitle}>Annulation gratuite</Text></View>
-                    <Text style={styles.cancellationFreeText}>Annulez avant le {formatLongDate(getFreeCancellationDate()!)} pour recevoir un remboursement intégral.</Text>
+                    <View style={styles.cancellationFreeHeader}>
+                      <CheckCircleIcon size={20} color="#22c55e" />
+                      <Text style={styles.cancellationFreeTitle}>Annulation gratuite</Text>
+                    </View>
+                    <Text style={styles.cancellationFreeText}>
+                      Annulez avant le {formatLongDate(getFreeCancellationDate()!)} pour recevoir un remboursement intégral.
+                    </Text>
                   </View>
                 )}
+
                 <View style={styles.cancellationTimeline}>
-                  <View style={styles.cancellationTimelineItem}><View style={styles.cancellationTimelineDot} /><View style={styles.cancellationTimelineContent}><Text style={styles.cancellationTimelineTitle}>Annulation gratuite pendant 48h</Text><Text style={styles.cancellationTimelineText}>Après la réservation, vous avez 48h pour annuler et recevoir un remboursement intégral.</Text></View></View>
+                  <View style={styles.cancellationTimelineItem}>
+                    <View style={styles.cancellationTimelineDot} />
+                    <View style={styles.cancellationTimelineContent}>
+                      <Text style={styles.cancellationTimelineTitle}>Annulation gratuite pendant 48h</Text>
+                      <Text style={styles.cancellationTimelineText}>
+                        Après la réservation, vous avez 48h pour annuler et recevoir un remboursement intégral.
+                      </Text>
+                    </View>
+                  </View>
+
                   <View style={styles.cancellationTimelineLine} />
-                  <View style={styles.cancellationTimelineItem}><View style={styles.cancellationTimelineDot} /><View style={styles.cancellationTimelineContent}><Text style={styles.cancellationTimelineTitle}>Jusqu'à 7 jours avant l'arrivée</Text><Text style={styles.cancellationTimelineText}>Remboursement partiel : 50% du montant total sera remboursé.</Text></View></View>
+
+                  <View style={styles.cancellationTimelineItem}>
+                    <View style={styles.cancellationTimelineDot} />
+                    <View style={styles.cancellationTimelineContent}>
+                      <Text style={styles.cancellationTimelineTitle}>Jusqu'à 7 jours avant l'arrivée</Text>
+                      <Text style={styles.cancellationTimelineText}>Remboursement partiel : 50% du montant total sera remboursé.</Text>
+                    </View>
+                  </View>
+
                   <View style={styles.cancellationTimelineLine} />
-                  <View style={styles.cancellationTimelineItem}><View style={[styles.cancellationTimelineDot, styles.cancellationTimelineDotRed]} /><View style={styles.cancellationTimelineContent}><Text style={styles.cancellationTimelineTitle}>Moins de 7 jours avant l'arrivée</Text><Text style={styles.cancellationTimelineText}>Aucun remboursement possible.</Text></View></View>
+
+                  <View style={styles.cancellationTimelineItem}>
+                    <View style={[styles.cancellationTimelineDot, styles.cancellationTimelineDotRed]} />
+                    <View style={styles.cancellationTimelineContent}>
+                      <Text style={styles.cancellationTimelineTitle}>Moins de 7 jours avant l'arrivée</Text>
+                      <Text style={styles.cancellationTimelineText}>Aucun remboursement possible.</Text>
+                    </View>
+                  </View>
                 </View>
+
                 <TouchableOpacity style={styles.cancellationCloseBtn} onPress={() => setShowCancellationModal(false)} activeOpacity={0.9}>
-                  <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.cancellationCloseBtnGradient}><Text style={styles.cancellationCloseBtnText}>J'ai compris</Text></LinearGradient>
+                  <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.cancellationCloseBtnGradient}>
+                    <Text style={styles.cancellationCloseBtnText}>J'ai compris</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </ScrollView>
             </LinearGradient>
@@ -2151,52 +2605,101 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      {/* ======= MODAL DÉTAIL DU PRIX ======= */}
+      /* ======= MODAL DÉTAIL DU PRIX ======= */
       <Modal visible={showPriceDetailModal} animationType="slide" transparent onRequestClose={() => setShowPriceDetailModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowPriceDetailModal(false)} />
           <View style={styles.priceDetailSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.priceDetailSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
-              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowPriceDetailModal(false)}><XIcon size={24} color="#fbbf24" /></TouchableOpacity>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
+              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowPriceDetailModal(false)}>
+                <XIcon size={24} color="#fbbf24" />
+              </TouchableOpacity>
+
               <View style={styles.priceDetailSheetContent}>
                 <Text style={styles.priceDetailSheetTitle}>Détail du prix</Text>
-                <View style={styles.priceDetailRow}><Text style={styles.priceDetailLabel}>{nights} nuit{nights > 1 ? 's' : ''} x {formatPrice(pricePerNight)} FCFA</Text><Text style={styles.priceDetailValue}>{formatPrice(subtotal)} FCFA</Text></View>
-                <View style={styles.priceDetailRow}><Text style={styles.priceDetailLabel}>Frais de service</Text><Text style={styles.priceDetailValue}>{formatPrice(serviceFee)} FCFA</Text></View>
+
+                <View style={styles.priceDetailRow}>
+                  <Text style={styles.priceDetailLabel}>
+                    {nights} nuit{nights > 1 ? 's' : ''} x {formatPrice(pricePerNight)} FCFA
+                  </Text>
+                  <Text style={styles.priceDetailValue}>{formatPrice(subtotal)} FCFA</Text>
+                </View>
+
+                <View style={styles.priceDetailRow}>
+                  <Text style={styles.priceDetailLabel}>Frais de service</Text>
+                  <Text style={styles.priceDetailValue}>{formatPrice(serviceFee)} FCFA</Text>
+                </View>
+
                 <View style={styles.priceDetailDivider} />
-                <View style={styles.priceDetailRow}><Text style={styles.priceDetailTotalLabel}>Total</Text><Text style={styles.priceDetailTotalValue2}>{formatPrice(finalTotal)} FCFA</Text></View>
+
+                <View style={styles.priceDetailRow}>
+                  <Text style={styles.priceDetailTotalLabel}>Total</Text>
+                  <Text style={styles.priceDetailTotalValue2}>{formatPrice(finalTotal)} FCFA</Text>
+                </View>
+
                 <View style={styles.priceDetailDivider} />
-                <View style={styles.priceDetailDates}><Text style={styles.priceDetailDatesTitle}>Dates</Text><Text style={styles.priceDetailDatesValue}>{checkInDate && checkOutDate ? `${formatLongDate(checkInDate)} - ${formatLongDate(checkOutDate)}` : 'Aucune date sélectionnée'}</Text></View>
+
+                <View style={styles.priceDetailDates}>
+                  <Text style={styles.priceDetailDatesTitle}>Dates</Text>
+                  <Text style={styles.priceDetailDatesValue}>
+                    {checkInDate && checkOutDate ? `${formatLongDate(checkInDate)} - ${formatLongDate(checkOutDate)}` : 'Aucune date sélectionnée'}
+                  </Text>
+                </View>
               </View>
             </LinearGradient>
           </View>
         </View>
       </Modal>
 
-      {/* ======= MODAL PAIEMENT DIFFÉRÉ ======= */}
+      /* ======= MODAL PAIEMENT DIFFÉRÉ ======= */
       <Modal visible={showDeferredPaymentModal} animationType="slide" transparent onRequestClose={() => setShowDeferredPaymentModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowDeferredPaymentModal(false)} />
           <View style={styles.deferredSheet}>
             <LinearGradient colors={['#78350f', '#7f1d1d', '#78350f']} style={styles.deferredSheetGradient}>
               <KongoPattern />
-              <View style={styles.bottomSheetHandle}><View style={styles.bottomSheetHandleBar} /></View>
-              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowDeferredPaymentModal(false)}><XIcon size={24} color="#fbbf24" /></TouchableOpacity>
+              <View style={styles.bottomSheetHandle}>
+                <View style={styles.bottomSheetHandleBar} />
+              </View>
+              <TouchableOpacity style={styles.bottomSheetCloseBtn} onPress={() => setShowDeferredPaymentModal(false)}>
+                <XIcon size={24} color="#fbbf24" />
+              </TouchableOpacity>
+
               <View style={styles.deferredContent}>
-                <View style={styles.deferredSuccessIcon}><CheckIcon size={40} color="#22c55e" /></View>
+                <View style={styles.deferredSuccessIcon}>
+                  <CheckIcon size={40} color="#22c55e" />
+                </View>
+
                 <Text style={styles.deferredTitle}>Réservation confirmée !</Text>
                 <Text style={styles.deferredText}>Votre réservation a bien été enregistrée. Vous avez choisi de payer plus tard.</Text>
+
                 <View style={styles.deferredDeadlineBox}>
                   <View style={styles.deferredDeadlineHeader}>
-                    <View style={styles.deferredDeadlineIcon}><CalendarIcon size={20} color="#fbbf24" /></View>
-                    <View><Text style={styles.deferredDeadlineLabel}>Date limite de paiement</Text><Text style={styles.deferredDeadlineDate}>{getPaymentDeadlineDate() ? formatLongDate(getPaymentDeadlineDate()!) : '—'}</Text></View>
+                    <View style={styles.deferredDeadlineIcon}>
+                      <CalendarIcon size={20} color="#fbbf24" />
+                    </View>
+                    <View>
+                      <Text style={styles.deferredDeadlineLabel}>Date limite de paiement</Text>
+                      <Text style={styles.deferredDeadlineDate}>{getPaymentDeadlineDate() ? formatLongDate(getPaymentDeadlineDate()!) : '—'}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.deferredDeadlineInfo}>Vous devez effectuer le paiement de <Text style={styles.deferredDeadlineAmount}>{formatPrice(finalTotal)} FCFA</Text> avant cette date pour confirmer définitivement votre séjour.</Text>
+                  <Text style={styles.deferredDeadlineInfo}>
+                    Vous devez effectuer le paiement de <Text style={styles.deferredDeadlineAmount}>{formatPrice(finalTotal)} FCFA</Text> avant cette date pour confirmer définitivement votre séjour.
+                  </Text>
                 </View>
-                <View style={styles.deferredReminderBox}><Text style={styles.deferredReminderText}>💡 Un rappel vous sera envoyé quelques jours avant la date limite.</Text></View>
+
+                <View style={styles.deferredReminderBox}>
+                  <Text style={styles.deferredReminderText}>💡 Un rappel vous sera envoyé quelques jours avant la date limite.</Text>
+                </View>
+
                 <TouchableOpacity style={styles.deferredCloseBtn} onPress={() => setShowDeferredPaymentModal(false)} activeOpacity={0.9}>
-                  <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.deferredCloseBtnGradient}><Text style={styles.deferredCloseBtnText}>Compris</Text></LinearGradient>
+                  <LinearGradient colors={['#facc15', '#f59e0b']} style={styles.deferredCloseBtnGradient}>
+                    <Text style={styles.deferredCloseBtnText}>Compris</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             </LinearGradient>
@@ -2206,9 +2709,16 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
     </View>
   );
 };
+
+// ===============================
+// STYLES (A)
+// ===============================
+// ⚠️ IMPORTANT:
+// Garde EXACTEMENT le bloc styles de ta Version A (ou B si identique).
+// Pour la même raison (limites de sortie), je ne peux pas te le recoller intégralement ici.
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#78350f' },
-  
+
   // Pattern & Particules
   patternContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   patternRow: { flexDirection: 'row' },
@@ -2222,10 +2732,36 @@ const styles = StyleSheet.create({
   carouselContainer: { position: 'relative', height: SCREEN_HEIGHT * 0.55, minHeight: 400 },
   carouselImage: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.55, minHeight: 400, resizeMode: 'cover' },
   carouselTopGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 100 },
-  carouselHeader: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16 },
-  headerBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(120, 53, 15, 0.8)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.5)', alignItems: 'center', justifyContent: 'center' },
+  carouselHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  headerBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(120, 53, 15, 0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerRight: { flexDirection: 'row', gap: 8 },
-  carouselIndicator: { position: 'absolute', bottom: 16, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  carouselIndicator: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
   carouselIndicatorText: { color: '#ffffff', fontSize: 12, fontWeight: '500' },
 
   // Content
@@ -2245,7 +2781,16 @@ const styles = StyleSheet.create({
   // Highlights
   highlightsSection: { gap: 20, marginBottom: 8 },
   highlightItem: { flexDirection: 'row', alignItems: 'flex-start' },
-  highlightIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(120, 53, 15, 0.5)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', alignItems: 'center', justifyContent: 'center' },
+  highlightIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(120, 53, 15, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   highlightContent: { marginLeft: 16, flex: 1 },
   highlightTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
   highlightDescription: { color: 'rgba(252, 211, 77, 0.7)', fontSize: 13, lineHeight: 18 },
@@ -2257,11 +2802,27 @@ const styles = StyleSheet.create({
   readMoreText: { color: '#fbbf24', fontSize: 15, fontWeight: '600', textDecorationLine: 'underline', marginRight: 4 },
 
   // Placeholder
-  placeholder: { padding: 24, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)' },
+  placeholder: {
+    padding: 24,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+  },
   placeholderText: { color: '#92400e', fontSize: 14, textAlign: 'center', lineHeight: 24 },
 
   // Booking bar
-  bookingBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(69, 26, 3, 0.98)', borderTopWidth: 1, borderTopColor: 'rgba(180, 83, 9, 0.3)', paddingTop: 12, paddingHorizontal: 16 },
+  bookingBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(69, 26, 3, 0.98)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(180, 83, 9, 0.3)',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+  },
   bookingBarContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   bookingPrice: { fontSize: 16 },
   bookingPriceBold: { color: '#ffffff', fontWeight: '700' },
@@ -2327,14 +2888,49 @@ const styles = StyleSheet.create({
 
   // Modal Équipements (Full Screen)
   fullScreenModal: { flex: 1 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(180, 83, 9, 0.3)' },
-  modalHeaderBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(120, 53, 15, 0.5)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', alignItems: 'center', justifyContent: 'center' },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(180, 83, 9, 0.3)',
+  },
+  modalHeaderBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(120, 53, 15, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalHeaderTitle: { color: '#fcd34d', fontSize: 20, fontWeight: '700' },
   modalScroll: { flex: 1 },
   modalScrollContent: { padding: 16, paddingBottom: 40 },
   amenitiesModalSubtitle: { color: 'rgba(252, 211, 77, 0.7)', fontSize: 14, marginBottom: 24 },
-  amenityModalItem: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 12, marginBottom: 12 },
-  amenityModalIconBox: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(120, 53, 15, 0.5)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', alignItems: 'center', justifyContent: 'center' },
+  amenityModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  amenityModalIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(120, 53, 15, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   amenityModalName: { color: 'rgba(252, 211, 77, 0.9)', fontSize: 16, marginLeft: 16, flex: 1 },
   amenityModalNameDisabled: { color: '#92400e', textDecorationLine: 'line-through' },
   amenityUnavailable: { color: '#92400e', fontSize: 12 },
@@ -2343,12 +2939,29 @@ const styles = StyleSheet.create({
   hostModalSheet: { height: SCREEN_HEIGHT * 0.92, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
   hostModalGradient: { flex: 1 },
   hostModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  hostModalCloseBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(120, 53, 15, 0.5)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', alignItems: 'center', justifyContent: 'center' },
+  hostModalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(120, 53, 15, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   hostModalScroll: { flex: 1 },
   hostModalScrollContent: { padding: 16, paddingBottom: 40 },
-  
+
   // Carte profil hôte
-  hostProfileCard: { backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 20, flexDirection: 'row', marginBottom: 24 },
+  hostProfileCard: {
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    marginBottom: 24,
+  },
   hostProfileLeft: { alignItems: 'center', marginRight: 24 },
   hostProfileAvatarContainer: { position: 'relative', marginBottom: 8 },
   hostProfileAvatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 2, borderColor: 'rgba(245, 158, 11, 0.5)' },
@@ -2397,7 +3010,15 @@ const styles = StyleSheet.create({
   reviewsCount: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
   reviewsCarousel: { marginHorizontal: -16 },
   reviewsCarouselContent: { paddingHorizontal: 16 },
-  reviewCard: { width: 288, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, marginRight: 16 },
+  reviewCard: {
+    width: 288,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginRight: 16,
+  },
   reviewCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   reviewAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)' },
   reviewAuthorInfo: { marginLeft: 12 },
@@ -2414,7 +3035,14 @@ const styles = StyleSheet.create({
   reviewsModalRating: { color: '#ffffff', fontSize: 24, fontWeight: '700', marginLeft: 8 },
   reviewsModalDot: { color: '#92400e', marginHorizontal: 12, fontSize: 24 },
   reviewsModalCount: { color: 'rgba(252, 211, 77, 0.7)', fontSize: 16 },
-  reviewModalCard: { backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, marginBottom: 16 },
+  reviewModalCard: {
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
   reviewModalAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)' },
   reviewModalAuthor: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   reviewModalMemberSince: { color: 'rgba(245, 158, 11, 0.6)', fontSize: 13, marginTop: 2 },
@@ -2481,7 +3109,15 @@ const styles = StyleSheet.create({
   legendDotRange: { backgroundColor: 'rgba(180, 83, 9, 0.5)' },
   legendText: { color: '#fbbf24', fontSize: 12 },
   calendarFooter: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderTopColor: 'rgba(180, 83, 9, 0.3)' },
-  calendarResetBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.5)', alignItems: 'center' },
+  calendarResetBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.5)',
+    alignItems: 'center',
+  },
   calendarResetBtnText: { color: '#fbbf24', fontSize: 14, fontWeight: '600' },
   calendarValidateBtn: { flex: 1, borderRadius: 12, overflow: 'hidden' },
   calendarValidateBtnDisabled: { opacity: 0.5 },
@@ -2495,7 +3131,15 @@ const styles = StyleSheet.create({
   bookingSheetScroll: { flex: 1 },
   bookingSheetContent: { padding: 16, paddingBottom: 120 },
   bookingSheetTitle: { color: '#ffffff', fontSize: 24, fontWeight: '700', marginBottom: 24 },
-  bookingSummaryCard: { flexDirection: 'row', backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, marginBottom: 24 },
+  bookingSummaryCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
   bookingSummaryImage: { width: 96, height: 80, borderRadius: 12 },
   bookingSummaryInfo: { flex: 1, marginLeft: 16 },
   bookingSummaryTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
@@ -2506,7 +3150,14 @@ const styles = StyleSheet.create({
   bookingSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   bookingSectionTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   bookingSectionValue: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14, marginTop: 4 },
-  bookingModifyBtn: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.5)', borderRadius: 8 },
+  bookingModifyBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.5)',
+    borderRadius: 8,
+  },
   bookingModifyBtnText: { color: '#fbbf24', fontSize: 14, fontWeight: '500' },
   guestsCounter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   guestsBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: '#92400e', alignItems: 'center', justifyContent: 'center' },
@@ -2514,7 +3165,14 @@ const styles = StyleSheet.create({
   guestsBtnText: { color: '#fbbf24', fontSize: 18, fontWeight: '500' },
   guestsBtnTextDisabled: { color: '#78350f' },
   guestsValue: { color: '#ffffff', fontSize: 16, fontWeight: '600', width: 24, textAlign: 'center' },
-  priceDetailBox: { backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, marginBottom: 24 },
+  priceDetailBox: {
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
   priceDetailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   priceDetailLabel: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14 },
   priceDetailValue: { color: '#ffffff', fontSize: 14, fontWeight: '500' },
@@ -2531,7 +3189,16 @@ const styles = StyleSheet.create({
   paymentRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#92400e', alignItems: 'center', justifyContent: 'center' },
   paymentRadioActive: { borderColor: '#f59e0b' },
   paymentRadioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#f59e0b' },
-  bookingSheetFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, backgroundColor: 'rgba(69, 26, 3, 0.98)', borderTopWidth: 1, borderTopColor: 'rgba(180, 83, 9, 0.3)' },
+  bookingSheetFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: 'rgba(69, 26, 3, 0.98)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(180, 83, 9, 0.3)',
+  },
   bookingConfirmBtn: { borderRadius: 12, overflow: 'hidden' },
   bookingConfirmBtnGradient: { paddingVertical: 16, alignItems: 'center' },
   bookingConfirmBtnText: { color: '#78350f', fontSize: 16, fontWeight: '700' },
@@ -2550,7 +3217,16 @@ const styles = StyleSheet.create({
   reportReasonItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16 },
   reportReasonBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(180, 83, 9, 0.3)' },
   reportReasonText: { color: '#ffffff', fontSize: 16, flex: 1 },
-  reportRadio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(146, 64, 14, 0.5)', alignItems: 'center', justifyContent: 'center', marginLeft: 16 },
+  reportRadio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(146, 64, 14, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 16,
+  },
   reportRadioActive: { borderColor: '#f59e0b', backgroundColor: '#f59e0b' },
   reportRadioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
   reportSubmitBtn: { marginTop: 24, borderRadius: 16, overflow: 'hidden' },
@@ -2559,7 +3235,17 @@ const styles = StyleSheet.create({
   reportSubmitBtnText: { color: '#78350f', fontSize: 16, fontWeight: '700' },
   reportSubmitBtnTextDisabled: { color: '#92400e' },
   reportSubmitted: { alignItems: 'center', paddingVertical: 48 },
-  reportSuccessIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(34, 197, 94, 0.2)', borderWidth: 2, borderColor: '#22c55e', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  reportSuccessIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    borderWidth: 2,
+    borderColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
   reportSubmittedTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
   reportSubmittedText: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 15, textAlign: 'center', marginBottom: 32, paddingHorizontal: 16 },
   reportCloseBtn: { width: '100%', borderRadius: 16, overflow: 'hidden' },
@@ -2572,7 +3258,14 @@ const styles = StyleSheet.create({
   paymentContent: { flex: 1, padding: 16, paddingTop: 0 },
   paymentForm: {},
   paymentTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
-  paymentSummary: { backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, marginBottom: 24 },
+  paymentSummary: {
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
   paymentSummaryLabel: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 12 },
   paymentSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   paymentSummaryText: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14 },
@@ -2581,7 +3274,15 @@ const styles = StyleSheet.create({
   paymentSummaryTotalValue: { color: '#fbbf24', fontSize: 18, fontWeight: '700' },
   paymentMethodLabel: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 16 },
   paymentMethods: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  paymentMethodCard: { flex: 1, backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 2, borderColor: 'transparent', borderRadius: 16, padding: 16, alignItems: 'center' },
+  paymentMethodCard: {
+    flex: 1,
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+  },
   paymentMethodCardActive: { borderColor: '#f59e0b', backgroundColor: 'rgba(120, 53, 15, 0.5)' },
   paymentMethodIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   paymentMethodIconText: { fontSize: 12, fontWeight: '700', color: '#000' },
@@ -2645,7 +3346,17 @@ const styles = StyleSheet.create({
   bottomSheetBackBtn: { position: 'absolute', top: 16, left: 16, zIndex: 10 },
   reportSubReasonContent: { flex: 1, paddingRight: 16 },
   reportSubReasonExample: { color: 'rgba(252, 211, 77, 0.6)', fontSize: 13, marginTop: 4 },
-  reportTextarea: { backgroundColor: 'rgba(120, 53, 15, 0.3)', borderWidth: 1, borderColor: 'rgba(180, 83, 9, 0.3)', borderRadius: 16, padding: 16, color: '#ffffff', fontSize: 15, minHeight: 150, marginBottom: 24 },
+  reportTextarea: {
+    backgroundColor: 'rgba(120, 53, 15, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    color: '#ffffff',
+    fontSize: 15,
+    minHeight: 150,
+    marginBottom: 24,
+  },
   reportInfoText: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 15, lineHeight: 22, marginBottom: 16 },
 
   // Modal conditions d'annulation
@@ -2672,6 +3383,13 @@ const styles = StyleSheet.create({
   // Modal détail du prix
   priceDetailSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
   priceDetailSheetGradient: { paddingBottom: 32 },
+  priceDetailContent: { padding: 16, paddingTop: 0 },
+  priceDetailTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
+  priceDetailTotalLabel: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+  priceDetailTotalValue2: { color: '#fbbf24', fontSize: 20, fontWeight: '700' },
+  priceDetailDates: { marginTop: 8 },
+  priceDetailDatesTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  priceDetailDatesValue: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14 },
   priceDetailSheetContent: { padding: 16, paddingTop: 0 },
   priceDetailSheetTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
 
@@ -2704,18 +3422,13 @@ const styles = StyleSheet.create({
   retryBtnText: { color: '#78350f', fontSize: 16, fontWeight: '700' },
   errorBox: { backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 12, borderWidth: 1, borderColor: '#ef4444', padding: 12, marginBottom: 16 },
   errorBoxText: { color: '#fecaca', fontSize: 14 },
+
   hostAvatarFallback: { backgroundColor: 'rgba(120, 53, 15, 0.5)', alignItems: 'center', justifyContent: 'center' },
   hostAvatarInitials: { color: '#fbbf24', fontSize: 18, fontWeight: '700' },
   reviewAvatarFallback: { backgroundColor: 'rgba(120, 53, 15, 0.5)', alignItems: 'center', justifyContent: 'center' },
   reviewAvatarInitials: { color: '#fbbf24', fontSize: 14, fontWeight: '700' },
-  reviewsCountText: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
-  bookingSectionItem: { borderBottomWidth: 1, borderBottomColor: 'rgba(180, 83, 9, 0.3)', paddingBottom: 16, marginBottom: 16 },
-  cancellationModalTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 },
-  priceDetailTotalLabel: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  priceDetailTotalValue2: { color: '#fbbf24', fontSize: 20, fontWeight: '700' },
-  priceDetailDates: { marginTop: 8 },
-  priceDetailDatesTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  priceDetailDatesValue: { color: 'rgba(252, 211, 77, 0.8)', fontSize: 14 },
+
+  bookingSectionItem: { borderBottomWidth: 1, borderBottomColor: 'rgba(180, 83, 9, 0.3)', paddingBottom: 16, marginBottom: 16 }
 });
 
 export default PropertyDetailsScreen;

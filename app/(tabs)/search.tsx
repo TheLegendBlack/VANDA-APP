@@ -1,6 +1,7 @@
+// app/(tabs)/search.tsx
 import React from 'react';
-import { View, Text } from 'react-native';
+import SearchScreen from '../../src/screens/SearchScreen';
 
-export default function SearchScreen() {
+export default function SearchRoute() {
   return <SearchScreen />;
 }
