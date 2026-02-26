@@ -660,7 +660,9 @@ const SearchScreen: React.FC = () => {
   const [searchCity, setSearchCity] = useState('');
   const [searchCityInput, setSearchCityInput] = useState('');
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
-  const [searchNeighborhoodId, setSearchNeighborhoodId] = useState('');
+    // ✅ Multi-quartiers (UI). On garde aussi un "primary" ID pour compat backend (1 seul id).
+  const [searchNeighborhoodIds, setSearchNeighborhoodIds] = useState<string[]>([]);
+  const searchNeighborhoodId = searchNeighborhoodIds[0] || ''; // compat backend
   const [searchNeighborhoodInput, setSearchNeighborhoodInput] = useState('');
   const [searchPropertyTypes, setSearchPropertyTypes] = useState<string[]>([]);
   const [searchLocationType, setSearchLocationType] = useState<LocationType>('');
@@ -712,9 +714,19 @@ const SearchScreen: React.FC = () => {
     () => cities.filter((city) => norm(city).includes(norm(searchCityInput))),
     [searchCityInput]
   );
+  const citiesRowA = useMemo(() => filteredCities.filter((_, i) => i % 2 === 0), [filteredCities]);
+  const citiesRowB = useMemo(() => filteredCities.filter((_, i) => i % 2 === 1), [filteredCities]);
   const filteredNeighborhoods = useMemo(
     () => neighborhoods.filter((n) => norm(n.name).includes(norm(searchNeighborhoodInput))),
     [neighborhoods, searchNeighborhoodInput]
+  );
+  const neighborhoodsRowA = useMemo(
+    () => filteredNeighborhoods.filter((_, i) => i % 2 === 0),
+    [filteredNeighborhoods]
+  );
+  const neighborhoodsRowB = useMemo(
+    () => filteredNeighborhoods.filter((_, i) => i % 2 === 1),
+    [filteredNeighborhoods]
   );
 
   /**
@@ -844,7 +856,7 @@ const SearchScreen: React.FC = () => {
   useEffect(() => {
     if (!searchCity) {
       setNeighborhoods([]);
-      setSearchNeighborhoodId('');
+      setSearchNeighborhoodIds([]);
       setSearchNeighborhoodInput('');
       return;
     }
@@ -900,12 +912,19 @@ const SearchScreen: React.FC = () => {
   // ===== Filtres UI
   const handleCitySelect = (city: string) => {
     setSearchCity((prev) => (prev === city ? '' : city));
-    setSearchNeighborhoodId('');
+    // ✅ reset quartier(s) + input quartier
+    setSearchNeighborhoodIds([]);
     setSearchNeighborhoodInput('');
   };
 
   const handlePropertyTypeToggle = (type: string) => {
     setSearchPropertyTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  };
+
+  const toggleNeighborhood = (id: string) => {
+    setSearchNeighborhoodIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   const toggleAmenity = (id: string) => {
@@ -915,7 +934,7 @@ const SearchScreen: React.FC = () => {
   const resetFilters = () => {
     setSearchCity('');
     setSearchCityInput('');
-    setSearchNeighborhoodId('');
+    setSearchNeighborhoodIds([]);
     setSearchNeighborhoodInput('');
     setSearchPropertyTypes([]);
     setSearchLocationType('');
@@ -953,13 +972,49 @@ const SearchScreen: React.FC = () => {
 
   const handleDateSelect = (day: number) => {
     const selectedDate = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+
+    // garde la règle "disabled" existante
+    if (isDateDisabled(selectedDate)) return;
+
+    const isSameDay = (a: Date | null, b: Date) => !!a && a.toDateString() === b.toDateString();
+
     if (showCalendar === 'arrival') {
+      // ✅ Web: recliquer la même arrivée => reset arrivée + départ
+      if (isSameDay(searchArrivalDate, selectedDate)) {
+        setSearchArrivalDate(null);
+        setSearchDepartureDate(null);
+        return;
+      }
+
       setSearchArrivalDate(selectedDate);
-      if (searchDepartureDate && selectedDate >= searchDepartureDate) setSearchDepartureDate(null);
-      setShowCalendar('departure');
-    } else if (showCalendar === 'departure') {
+
+      // ✅ Web: si départ <= arrivée => reset départ
+      if (searchDepartureDate && searchDepartureDate <= selectedDate) {
+        setSearchDepartureDate(null);
+      }
+
+      // ✅ Web: auto-switch vers departure UNIQUEMENT en courte durée
+      if (searchLocationType === 'short') {
+        setShowCalendar('departure');
+      }
+      return;
+    }
+
+    if (showCalendar === 'departure') {
+      // ✅ Web: recliquer la même date de départ => retire le départ
+      if (isSameDay(searchDepartureDate, selectedDate)) {
+        setSearchDepartureDate(null);
+        return;
+      }
+
+      // ✅ Web: si arrivée existe, départ doit être > arrivée
+      if (searchArrivalDate && selectedDate <= searchArrivalDate) return;
+
       setSearchDepartureDate(selectedDate);
-      setShowCalendar(null);
+
+      // ✅ IMPORTANT: pour matcher web, on ne ferme pas automatiquement ici.
+      // L’utilisateur valide via le bouton "Valider"
+      // setShowCalendar(null);
     }
   };
 
@@ -1040,6 +1095,8 @@ const SearchScreen: React.FC = () => {
     };
 
     if (searchCity) params.city = searchCity;
+    // NB: backend accepte 1 seul neighborhoodId pour l’instant.
+    // UI permet multi-select, on envoie le premier sélectionné.
     if (searchNeighborhoodId) params.neighborhoodId = searchNeighborhoodId;
 
     if (searchPropertyTypes.length === 1) params.propertyType = searchPropertyTypes[0];
@@ -1254,7 +1311,8 @@ const SearchScreen: React.FC = () => {
                     onPress={() => {
                       // ✅ UX maquette: en choisissant une destination, on ouvre le modal avec animation
                       setSearchCity(name);
-                      setSearchNeighborhoodId('');
+                      // ✅ multi-quartiers => reset liste
+                      setSearchNeighborhoodIds([]);
                       setSearchNeighborhoodInput('');
                       openSearchModal();
                     }}
@@ -1337,17 +1395,36 @@ const SearchScreen: React.FC = () => {
                   />
                 </View>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
-                  {filteredCities.map((city: string) => (
-                    <TouchableOpacity
-                      key={city}
-                      style={[styles.chip, searchCity === city && styles.chipActive]}
-                      onPress={() => handleCitySelect(city)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.chipText, searchCity === city && styles.chipTextActive]}>{city}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.citiesTwoRowsWrap}>
+                  <View style={styles.citiesTwoRows}>
+                    {/* Row A */}
+                    <View style={styles.citiesRow}>
+                      {citiesRowA.map((city: string) => (
+                        <TouchableOpacity
+                          key={`city-a-${city}`}
+                          style={[styles.chip, searchCity === city && styles.chipActive]}
+                          onPress={() => handleCitySelect(city)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.chipText, searchCity === city && styles.chipTextActive]}>{city}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Row B */}
+                    <View style={[styles.citiesRow, { marginTop: 10 }]}>
+                      {citiesRowB.map((city: string) => (
+                        <TouchableOpacity
+                          key={`city-b-${city}`}
+                          style={[styles.chip, searchCity === city && styles.chipActive]}
+                          onPress={() => handleCitySelect(city)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.chipText, searchCity === city && styles.chipTextActive]}>{city}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
                 </ScrollView>
               </View>
 
@@ -1357,9 +1434,11 @@ const SearchScreen: React.FC = () => {
                   <View style={styles.filterLabelRow}>
                     <MapPinIcon size={14} color="#fcd34d" />
                     <Text style={styles.filterLabel}>QUARTIER</Text>
-                    {searchNeighborhoodId ? (
+
+                    {/* ✅ Badge = nombre de quartiers sélectionnés */}
+                    {searchNeighborhoodIds.length > 0 ? (
                       <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText}>1</Text>
+                        <Text style={styles.countBadgeText}>{searchNeighborhoodIds.length}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -1374,17 +1453,47 @@ const SearchScreen: React.FC = () => {
                     />
                   </View>
 
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
-                    {filteredNeighborhoods.map((n: Neighborhood) => (
-                      <TouchableOpacity
-                        key={n.id}
-                        style={[styles.chip, searchNeighborhoodId === n.id && styles.chipActive]}
-                        onPress={() => setSearchNeighborhoodId((prev) => (prev === n.id ? '' : n.id))}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={[styles.chipText, searchNeighborhoodId === n.id && styles.chipTextActive]}>{n.name}</Text>
-                      </TouchableOpacity>
-                    ))}
+                  {/* ✅ 2 lignes + scroll horizontal (comme villes) */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.neighborhoodsTwoRowsWrap}
+                  >
+                    <View style={styles.neighborhoodsTwoRows}>
+                      {/* Row A */}
+                      <View style={styles.neighborhoodsRow}>
+                        {neighborhoodsRowA.map((n: Neighborhood) => {
+                          const active = searchNeighborhoodIds.includes(n.id);
+                          return (
+                            <TouchableOpacity
+                              key={`n-a-${n.id}`}
+                              style={[styles.chip, active && styles.chipActive]}
+                              onPress={() => toggleNeighborhood(n.id)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={[styles.chipText, active && styles.chipTextActive]}>{n.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {/* Row B */}
+                      <View style={[styles.neighborhoodsRow, { marginTop: 10 }]}>
+                        {neighborhoodsRowB.map((n: Neighborhood) => {
+                          const active = searchNeighborhoodIds.includes(n.id);
+                          return (
+                            <TouchableOpacity
+                              key={`n-b-${n.id}`}
+                              style={[styles.chip, active && styles.chipActive]}
+                              onPress={() => toggleNeighborhood(n.id)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={[styles.chipText, active && styles.chipTextActive]}>{n.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
                   </ScrollView>
                 </View>
               )}
@@ -2093,6 +2202,16 @@ const styles = StyleSheet.create({
   propertyPrice: { color: '#fcd34d', fontSize: 11 },
   propertyMetaDot: { color: 'rgba(252, 211, 77, 0.7)', fontSize: 11, marginHorizontal: 4 },
   propertyRating: { color: '#ffffff', fontSize: 11, marginLeft: 2 },
+  neighborhoodsTwoRowsWrap: {
+  paddingVertical: 2,
+  },
+  neighborhoodsTwoRows: {
+    paddingRight: 12,
+  },
+  neighborhoodsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
 
   // Modal
   modalContainer: { flex: 1, backgroundColor: '#78350f' },
@@ -2128,6 +2247,16 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: 'rgba(250, 204, 21, 0.2)', borderColor: '#fbbf24' },
   chipText: { color: '#fcd34d', fontSize: 14 },
   chipTextActive: { color: '#fbbf24', fontWeight: '600' },
+  citiesTwoRowsWrap: {
+    paddingVertical: 2,
+  },
+  citiesTwoRows: {
+    paddingRight: 12,
+  },
+  citiesRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
 
   // Location Type
   locationTypeRow: { flexDirection: 'row', gap: 8 },
