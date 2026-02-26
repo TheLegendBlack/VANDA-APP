@@ -529,7 +529,7 @@ interface Section {
   isConditional?: boolean;
 }
 
-const cities = ['Brazzaville', 'Pointe-Noire', 'Dolisie', 'Nkayi', 'Ouesso', 'Oyo', 'Impfondo', 'Sibiti', 'Madingou', 'Owando'];
+const cities = ['Brazzaville', 'Pointe-Noire', 'Dolisie', 'Nkayi', 'Ouesso', 'Oyo', 'Impfondo', 'Sibiti', 'Madingou', 'Owando', 'Gamboma', 'Mossendjo', 'Kinkala', 'Loubomo', 'Mouyondzi', 'Ewo', 'Betou', 'Makoua', 'Sembé', 'Djambala'];
 
 const propertyTypes = [
   { value: 'apartment', label: 'Appartement' },
