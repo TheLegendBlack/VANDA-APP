@@ -13,6 +13,12 @@ import {
   Modal,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
+  TextInput,
+  Platform,
+  KeyboardAvoidingView,
+  Easing,
+  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
@@ -44,6 +50,134 @@ import { addFavorite, removeFavorite } from '../api/favorites';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH_NORMAL = (SCREEN_WIDTH - 32 - 12) / 2.1;
 const CARD_WIDTH_RECENT = (SCREEN_WIDTH - 32 - 24) / 3.15;
+
+// ===============================
+// Gradient VANDA (aligné maquette web)
+// À réutiliser partout (Home + Modal Search + Modal Voir tout)
+// ===============================
+const VANDA_GRADIENT_COLORS = ['#78350f', '#7f1d1d', '#78350f'] as const;
+const VANDA_GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
+
+const PRICE_NIGHT_MIN = 5000;
+const PRICE_NIGHT_MAX = 500000;
+const PRICE_MONTH_MIN = 20000;
+const PRICE_MONTH_MAX = 5000000;
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(Math.max(v, min), max);
+}
+
+function makeHistogram(count: number): number[] {
+  if (count <= 0) return [];
+  const mid = (count - 1) / 2;
+  const sigma = count / 5;
+  const values = Array.from({ length: count }, (_, i) => {
+    const x = (i - mid) / sigma;
+    const gaussian = Math.exp(-0.5 * x * x);
+    const ripple = 0.08 * Math.sin(i * 0.9) + 0.04 * Math.cos(i * 1.7);
+    return Math.max(0.15, gaussian + ripple);
+  });
+  const maxVal = Math.max(...values, 1);
+  return values.map((v) => Math.round((v / maxVal) * 100));
+}
+
+interface DualRangeSliderProps {
+  min: number;
+  max: number;
+  step: number;
+  valueMin: number;
+  valueMax: number;
+  onChangeMin: (v: number) => void;
+  onChangeMax: (v: number) => void;
+}
+
+const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
+  min,
+  max,
+  step,
+  valueMin,
+  valueMax,
+  onChangeMin,
+  onChangeMax,
+}) => {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const thumbSize = 24;
+
+  const range = Math.max(1, max - min);
+  const minX = trackWidth > 0 ? ((valueMin - min) / range) * trackWidth : 0;
+  const maxX = trackWidth > 0 ? ((valueMax - min) / range) * trackWidth : 0;
+
+  const xToValue = (x: number) => {
+    const ratio = trackWidth > 0 ? clamp(x, 0, trackWidth) / trackWidth : 0;
+    const raw = min + ratio * range;
+    const stepped = Math.round((raw - min) / step) * step + min;
+    return clamp(stepped, min, max);
+  };
+
+  const minPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (_, gestureState) => {
+          const next = xToValue(minX + gestureState.dx);
+          onChangeMin(clamp(next, min, Math.max(min, valueMax - step)));
+        },
+      }),
+    [min, onChangeMin, step, valueMax, trackWidth, minX]
+  );
+
+  const maxPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (_, gestureState) => {
+          const next = xToValue(maxX + gestureState.dx);
+          onChangeMax(clamp(next, Math.min(max, valueMin + step), max));
+        },
+      }),
+    [max, onChangeMax, step, valueMin, trackWidth, maxX]
+  );
+
+  return (
+    <View
+      style={styles.rangeWrap}
+      onLayout={(e) => {
+        setTrackWidth(e.nativeEvent.layout.width);
+      }}
+    >
+      <View style={styles.rangeTrack} />
+      <View
+        style={[
+          styles.rangeTrackActive,
+          {
+            left: minX,
+            width: Math.max(0, maxX - minX),
+          },
+        ]}
+      />
+      <View
+        {...minPanResponder.panHandlers}
+        style={[
+          styles.rangeThumb,
+          {
+            left: clamp(minX - thumbSize / 2, -thumbSize / 2, Math.max(-thumbSize / 2, trackWidth - thumbSize / 2)),
+          },
+        ]}
+      />
+      <View
+        {...maxPanResponder.panHandlers}
+        style={[
+          styles.rangeThumb,
+          {
+            left: clamp(maxX - thumbSize / 2, -thumbSize / 2, Math.max(-thumbSize / 2, trackWidth - thumbSize / 2)),
+          },
+        ]}
+      />
+    </View>
+  );
+};
 
 interface IconProps {
   size?: number;
@@ -522,9 +656,12 @@ const SearchScreen: React.FC = () => {
 
   // modal search
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [isSearchModalClosing, setIsSearchModalClosing] = useState(false);
   const [searchCity, setSearchCity] = useState('');
+  const [searchCityInput, setSearchCityInput] = useState('');
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [searchNeighborhoodId, setSearchNeighborhoodId] = useState('');
+  const [searchNeighborhoodInput, setSearchNeighborhoodInput] = useState('');
   const [searchPropertyTypes, setSearchPropertyTypes] = useState<string[]>([]);
   const [searchLocationType, setSearchLocationType] = useState<LocationType>('');
   const [searchGuests, setSearchGuests] = useState(0);
@@ -533,10 +670,10 @@ const SearchScreen: React.FC = () => {
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [equipmentsLoaded, setEquipmentsLoaded] = useState(false);
   const [searchAmenities, setSearchAmenities] = useState<string[]>([]);
-  const [priceMinNight, setPriceMinNight] = useState(5000);
-  const [priceMaxNight, setPriceMaxNight] = useState(500000);
-  const [priceMinMonth, setPriceMinMonth] = useState(20000);
-  const [priceMaxMonth, setPriceMaxMonth] = useState(5000000);
+  const [priceMinNight, setPriceMinNight] = useState(PRICE_NIGHT_MIN);
+  const [priceMaxNight, setPriceMaxNight] = useState(PRICE_NIGHT_MAX);
+  const [priceMinMonth, setPriceMinMonth] = useState(PRICE_MONTH_MIN);
+  const [priceMaxMonth, setPriceMaxMonth] = useState(PRICE_MONTH_MAX);
 
   // calendrier (conservé comme la maquette – visuel complet)
   const [showCalendar, setShowCalendar] = useState<CalendarMode>(null);
@@ -549,6 +686,8 @@ const SearchScreen: React.FC = () => {
   const [carouselIndexes, setCarouselIndexes] = useState<{ [key: string]: number }>({});
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchTotal, setSearchTotal] = useState(0);
+  const searchModalOpacity = useRef(new Animated.Value(0)).current;
+  const searchModalTranslateY = useRef(new Animated.Value(32)).current;
 
   useEffect(() => {
     const interval = setInterval(() => setShowSecondaryPrice((prev) => !prev), 7000);
@@ -567,7 +706,38 @@ const SearchScreen: React.FC = () => {
     []
   );
 
+  const histogramNight = useMemo(() => makeHistogram(28), []);
+  const histogramMonth = useMemo(() => makeHistogram(28), []);
+  const filteredCities = useMemo(
+    () => cities.filter((city) => norm(city).includes(norm(searchCityInput))),
+    [searchCityInput]
+  );
+  const filteredNeighborhoods = useMemo(
+    () => neighborhoods.filter((n) => norm(n.name).includes(norm(searchNeighborhoodInput))),
+    [neighborhoods, searchNeighborhoodInput]
+  );
+
+  /**
+   * IMPORTANT (alignement maquette web + ta demande)
+   * - particles est généré UNE SEULE FOIS via useMemo([]) => positions persistantes
+   * - donc AUCUNE "téléportation" au fil des renders/modals
+   * - on réutilisera CE MÊME tableau dans:
+   *   - l'écran principal
+   *   - le Modal Search (PARTIE 2)
+   *   - le Modal "Voir tout" (PARTIE 2)
+   */
+
   const formatPrice = (price: number) => price.toLocaleString('fr-FR');
+
+  const getEquipmentLabel = (eq: Equipment) => {
+    const anyEq = eq as Equipment & { label?: string; title?: string };
+    return anyEq.label ?? anyEq.name ?? anyEq.title ?? '';
+  };
+
+  const getEquipmentCategory = (eq: Equipment) => {
+    const anyEq = eq as Equipment & { category?: string };
+    return anyEq.category ?? '';
+  };
 
   const getDisplayPrice = (property: UiProperty) => {
     if (property.secondaryPrice && showSecondaryPrice) {
@@ -579,6 +749,57 @@ const SearchScreen: React.FC = () => {
   const getPropertyImages = (property: UiProperty) => property.images?.length ? property.images : [property.image];
 
   const getCarouselIndex = (propertyId: string) => carouselIndexes[propertyId] || 0;
+
+  const animateOpenSearchModal = () => {
+    setIsSearchModalClosing(false);
+    searchModalOpacity.setValue(0);
+    searchModalTranslateY.setValue(32);
+    Animated.parallel([
+      Animated.timing(searchModalOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchModalTranslateY, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const openSearchModal = () => {
+    if (showSearchModal && !isSearchModalClosing) return;
+    setShowSearchModal(true);
+    // ✅ garantit que le modal est monté avant l'anim (comme web)
+    requestAnimationFrame(animateOpenSearchModal);
+  };
+
+  const closeSearchModal = (resetOnClose = true) => {
+    if (!showSearchModal || isSearchModalClosing) return;
+    setIsSearchModalClosing(true);
+    Animated.parallel([
+      Animated.timing(searchModalOpacity, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchModalTranslateY, {
+        toValue: 24,
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      setShowSearchModal(false);
+      setIsSearchModalClosing(false);
+      if (resetOnClose) resetFilters();
+    });
+  };
 
   // ===== Data loaders
   const loadHome = async () => {
@@ -624,6 +845,7 @@ const SearchScreen: React.FC = () => {
     if (!searchCity) {
       setNeighborhoods([]);
       setSearchNeighborhoodId('');
+      setSearchNeighborhoodInput('');
       return;
     }
     listNeighborhoods({ city: searchCity })
@@ -672,13 +894,14 @@ const SearchScreen: React.FC = () => {
 
   // ===== Navigation
   const navigateToProperty = (id: string) => {
-    router.push(`/(tabs)/property/${id}`);
+    router.push(`/property/${id}`);
   };
 
   // ===== Filtres UI
   const handleCitySelect = (city: string) => {
     setSearchCity((prev) => (prev === city ? '' : city));
     setSearchNeighborhoodId('');
+    setSearchNeighborhoodInput('');
   };
 
   const handlePropertyTypeToggle = (type: string) => {
@@ -691,17 +914,19 @@ const SearchScreen: React.FC = () => {
 
   const resetFilters = () => {
     setSearchCity('');
+    setSearchCityInput('');
     setSearchNeighborhoodId('');
+    setSearchNeighborhoodInput('');
     setSearchPropertyTypes([]);
     setSearchLocationType('');
     setSearchGuests(0);
     setSearchBedrooms(0);
     setSearchBeds(0);
     setSearchAmenities([]);
-    setPriceMinNight(5000);
-    setPriceMaxNight(500000);
-    setPriceMinMonth(20000);
-    setPriceMaxMonth(5000000);
+    setPriceMinNight(PRICE_NIGHT_MIN);
+    setPriceMaxNight(PRICE_NIGHT_MAX);
+    setPriceMinMonth(PRICE_MONTH_MIN);
+    setPriceMaxMonth(PRICE_MONTH_MAX);
     setSearchArrivalDate(null);
     setSearchDepartureDate(null);
     setShowCalendar(null);
@@ -805,7 +1030,7 @@ const SearchScreen: React.FC = () => {
   };
 
   const performSearch = async () => {
-    setShowSearchModal(false);
+    closeSearchModal(false);
     setSearchLoading(true);
 
     const params: SearchPropertiesParams = {
@@ -829,12 +1054,12 @@ const SearchScreen: React.FC = () => {
 
     // prix
     if (searchLocationType === 'short' || searchLocationType === 'both' || searchLocationType === '') {
-      if (priceMinNight > 5000) params.minPrice = priceMinNight;
-      if (priceMaxNight < 500000) params.maxPrice = priceMaxNight;
+      if (priceMinNight > PRICE_NIGHT_MIN) params.minPrice = priceMinNight;
+      if (priceMaxNight < PRICE_NIGHT_MAX) params.maxPrice = priceMaxNight;
     }
     if (searchLocationType === 'long') {
-      if (priceMinMonth > 20000) params.minPrice = priceMinMonth;
-      if (priceMaxMonth < 5000000) params.maxPrice = priceMaxMonth;
+      if (priceMinMonth > PRICE_MONTH_MIN) params.minPrice = priceMinMonth;
+      if (priceMaxMonth < PRICE_MONTH_MAX) params.maxPrice = priceMaxMonth;
     }
 
     try {
@@ -877,20 +1102,36 @@ const SearchScreen: React.FC = () => {
     const imageHeight = isRecent ? cardWidth : 144;
     const isFav = favorites.has(property.id);
 
+    // ✅ Qualité: press feedback (web-like) => on passe en Pressable + scale léger
     return (
-      <TouchableOpacity key={property.id} style={[styles.propertyCard, { width: cardWidth }]} activeOpacity={0.9} onPress={() => navigateToProperty(property.id)}>
+      <Pressable
+        key={property.id}
+        onPress={() => navigateToProperty(property.id)}
+        style={({ pressed }) => [
+          styles.propertyCard,
+          { width: cardWidth, transform: [{ scale: pressed ? 0.985 : 1 }] },
+        ]}
+      >
         <View style={[styles.imageContainer, { height: imageHeight }]}>
           <Image source={{ uri: property.image }} style={styles.propertyImage} />
           <LinearGradient colors={['transparent', 'transparent', 'rgba(0,0,0,0.4)']} style={styles.imageOverlay} />
+
           {property.isGuestFavorite && (
             <View style={styles.guestFavoriteBadge}>
               <Text style={styles.guestFavoriteBadgeText}>Coup de cœur</Text>
             </View>
           )}
-          <TouchableOpacity style={styles.favoriteButton} onPress={() => toggleFavorite(property.id)} activeOpacity={0.8}>
+
+          {/* ✅ Qualité: bouton favori avec léger fond (hitbox + premium) */}
+          <TouchableOpacity
+            style={[styles.favoriteButton, styles.favoriteButtonBg]}
+            onPress={() => toggleFavorite(property.id)}
+            activeOpacity={0.8}
+          >
             <HeartIcon size={20} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
           </TouchableOpacity>
         </View>
+
         <View style={styles.propertyInfo}>
           {isRecent ? (
             <>
@@ -909,10 +1150,14 @@ const SearchScreen: React.FC = () => {
             </>
           ) : (
             <>
-              <Text style={styles.propertyTitle} numberOfLines={2}>{property.title}</Text>
+              <Text style={styles.propertyTitle} numberOfLines={2}>
+                {property.title}
+              </Text>
               <Text style={styles.propertyLocation}>{property.location}</Text>
               <View style={styles.propertyMeta}>
-                <Text style={styles.propertyPrice}>{formatPrice(displayPrice.price)} FCFA/{displayPrice.unit}</Text>
+                <Text style={styles.propertyPrice}>
+                  {formatPrice(displayPrice.price)} FCFA/{displayPrice.unit}
+                </Text>
                 <Text style={styles.propertyMetaDot}>·</Text>
                 <StarIcon size={10} color="#fbbf24" filled />
                 <Text style={styles.propertyRating}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
@@ -920,24 +1165,40 @@ const SearchScreen: React.FC = () => {
             </>
           )}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
+
+      {/* ✅ Alignement maquette web: gradient unique VANDA (3 stops) */}
+      <LinearGradient
+        colors={VANDA_GRADIENT_COLORS as any}
+        locations={VANDA_GRADIENT_LOCATIONS as any}
+        style={StyleSheet.absoluteFillObject}
+      />
       <KongoPattern />
+
+      {/* ✅ Particules persistantes: on réutilise le même tableau `particles` */}
       <View style={styles.particlesContainer}>
-        {particles.map((p) => <FloatingParticle key={p.id} {...p} />)}
+        {particles.map((p) => (
+          <FloatingParticle key={p.id} {...p} />
+        ))}
       </View>
 
       <View style={[styles.content, { paddingTop: insets.top }]}>
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.searchBar} onPress={() => setShowSearchModal(true)} activeOpacity={0.8}>
-            <LinearGradient colors={['rgba(120, 53, 15, 0.8)', 'rgba(127, 29, 29, 0.8)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.searchBarGradient}>
+          {/* ✅ Remplace setShowSearchModal(true) par openSearchModal() (animation web-like) */}
+          <TouchableOpacity style={styles.searchBar} onPress={openSearchModal} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['rgba(120, 53, 15, 0.8)', 'rgba(127, 29, 29, 0.8)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.searchBarGradient}
+            >
               <SearchIconGradient size={28} />
               <View style={styles.searchBarText}>
                 <Text style={styles.searchBarTitle}>Rechercher un logement</Text>
@@ -991,8 +1252,11 @@ const SearchScreen: React.FC = () => {
                     style={styles.destinationCard}
                     activeOpacity={0.9}
                     onPress={() => {
+                      // ✅ UX maquette: en choisissant une destination, on ouvre le modal avec animation
                       setSearchCity(name);
-                      setShowSearchModal(true);
+                      setSearchNeighborhoodId('');
+                      setSearchNeighborhoodInput('');
+                      openSearchModal();
                     }}
                   >
                     <Image source={{ uri: image }} style={styles.destinationImage} />
@@ -1012,156 +1276,314 @@ const SearchScreen: React.FC = () => {
       </View>
 
       {/* ===============================
-          MODAL RECHERCHE
+          MODAL RECHERCHE (web-like fade + slide + reset)
       =============================== */}
-      <Modal visible={showSearchModal} animationType="slide" presentationStyle="fullScreen">
-        <View style={styles.modalContainer}>
-          <LinearGradient colors={['#78350f', '#92400e', '#78350f']} style={StyleSheet.absoluteFillObject} />
-          <KongoPattern />
+      <Modal visible={showSearchModal} transparent animationType="none" statusBarTranslucent>
+        {/* ✅ Backdrop cliquable: ferme + reset (comportement web) */}
+        <Pressable style={styles.searchModalBackdrop} onPress={() => closeSearchModal(true)} />
 
-          {/* Header Modal */}
-          <View style={[styles.modalHeader, { paddingTop: insets.top + 16 }]}>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowSearchModal(false)}>
-              <XIcon size={20} color="#fbbf24" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Rechercher</Text>
-            <TouchableOpacity onPress={resetFilters}>
-              <Text style={styles.modalClearBtn}>Effacer</Text>
-            </TouchableOpacity>
-          </View>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.searchModalRoot}>
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                opacity: searchModalOpacity,
+                transform: [{ translateY: searchModalTranslateY }],
+              },
+            ]}
+          >
+            {/* ✅ Alignement maquette web: même fond/gradient que Home */}
+            <LinearGradient
+              colors={VANDA_GRADIENT_COLORS as any}
+              locations={VANDA_GRADIENT_LOCATIONS as any}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <KongoPattern />
 
-          <ScrollView style={styles.modalScroll} contentContainerStyle={[styles.modalScrollContent, { paddingBottom: 120 }]}>
-            {/* VILLE */}
-            <View style={styles.filterSection}>
-              <View style={styles.filterLabelRow}>
-                <MapPinIcon size={14} color="#fcd34d" />
-                <Text style={styles.filterLabel}>VILLE</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
-                {cities.map((city) => (
-                  <TouchableOpacity
-                    key={city}
-                    style={[styles.chip, searchCity === city && styles.chipActive]}
-                    onPress={() => handleCitySelect(city)}
-                  >
-                    <Text style={[styles.chipText, searchCity === city && styles.chipTextActive]}>{city}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+            {/* ✅ Particules persistantes réutilisées dans le modal (pas de téléportation) */}
+            <View style={styles.particlesContainer}>
+              {particles.map((p) => (
+                <FloatingParticle key={`m-${p.id}`} {...p} />
+              ))}
             </View>
 
-            {/* QUARTIER (backend) */}
-            {searchCity && neighborhoods.length > 0 && (
+            {/* Header Modal */}
+            <View style={[styles.modalHeader, { paddingTop: insets.top + 16 }]}>
+              {/* ✅ Close: ferme + reset (comme web) */}
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => closeSearchModal(true)}>
+                <XIcon size={20} color="#fbbf24" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Rechercher</Text>
+              <TouchableOpacity onPress={resetFilters}>
+                <Text style={styles.modalClearBtn}>Effacer</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} contentContainerStyle={[styles.modalScrollContent, { paddingBottom: 120 }]}>
+              {/* VILLE */}
               <View style={styles.filterSection}>
                 <View style={styles.filterLabelRow}>
                   <MapPinIcon size={14} color="#fcd34d" />
-                  <Text style={styles.filterLabel}>QUARTIER</Text>
-                  {searchNeighborhoodId ? (
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>1</Text>
-                    </View>
-                  ) : null}
+                  <Text style={styles.filterLabel}>VILLE</Text>
+                </View>
+
+                <View style={styles.searchInputWrap}>
+                  <TextInput
+                    value={searchCityInput}
+                    onChangeText={setSearchCityInput}
+                    placeholder="Rechercher une ville..."
+                    placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                    style={styles.searchInput}
+                  />
                 </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
-                  {neighborhoods.map((n) => (
+                  {filteredCities.map((city: string) => (
                     <TouchableOpacity
-                      key={n.id}
-                      style={[styles.chip, searchNeighborhoodId === n.id && styles.chipActive]}
-                      onPress={() => setSearchNeighborhoodId((prev) => (prev === n.id ? '' : n.id))}
+                      key={city}
+                      style={[styles.chip, searchCity === city && styles.chipActive]}
+                      onPress={() => handleCitySelect(city)}
+                      activeOpacity={0.85}
                     >
-                      <Text style={[styles.chipText, searchNeighborhoodId === n.id && styles.chipTextActive]}>{n.name}</Text>
+                      <Text style={[styles.chipText, searchCity === city && styles.chipTextActive]}>{city}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
-            )}
 
-            {/* TYPE DE LOGEMENT */}
-            <View style={styles.filterSection}>
-              <View style={styles.filterLabelRow}>
-                <HomeIcon size={14} color="#fcd34d" />
-                <Text style={styles.filterLabel}>TYPE DE LOGEMENT</Text>
-                {searchPropertyTypes.length > 0 && (
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{searchPropertyTypes.length}</Text>
+              {/* QUARTIER (backend) */}
+              {searchCity && neighborhoods.length > 0 && (
+                <View style={styles.filterSection}>
+                  <View style={styles.filterLabelRow}>
+                    <MapPinIcon size={14} color="#fcd34d" />
+                    <Text style={styles.filterLabel}>QUARTIER</Text>
+                    {searchNeighborhoodId ? (
+                      <View style={styles.countBadge}>
+                        <Text style={styles.countBadgeText}>1</Text>
+                      </View>
+                    ) : null}
                   </View>
-                )}
-              </View>
-              <View style={styles.chipsWrap}>
-                {propertyTypes.map((type) => (
-                  <TouchableOpacity
-                    key={type.value}
-                    style={[styles.chip, searchPropertyTypes.includes(type.value) && styles.chipActive]}
-                    onPress={() => handlePropertyTypeToggle(type.value)}
-                  >
-                    <Text style={[styles.chipText, searchPropertyTypes.includes(type.value) && styles.chipTextActive]}>
-                      {type.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
 
-            {/* TYPE DE LOCATION */}
-            <View style={styles.filterSection}>
-              <View style={styles.filterLabelRow}>
-                <HomeIcon size={14} color="#fcd34d" />
-                <Text style={styles.filterLabel}>TYPE DE LOCATION</Text>
-              </View>
-              <View style={styles.locationTypeRow}>
-                {locationTypes.map((type) => (
-                  <TouchableOpacity
-                    key={type.value}
-                    style={[styles.locationTypeBtn, searchLocationType === type.value && styles.locationTypeBtnActive]}
-                    onPress={() => setSearchLocationType((prev) => (prev === type.value ? '' : type.value))}
-                  >
-                    <Text style={[styles.locationTypeBtnText, searchLocationType === type.value && styles.locationTypeBtnTextActive]}>
-                      {type.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+                  <View style={styles.searchInputWrap}>
+                    <TextInput
+                      value={searchNeighborhoodInput}
+                      onChangeText={setSearchNeighborhoodInput}
+                      placeholder="Rechercher un quartier..."
+                      placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                      style={styles.searchInput}
+                    />
+                  </View>
 
-            {/* FOURCHETTE DE PRIX */}
-            {searchLocationType && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
+                    {filteredNeighborhoods.map((n: Neighborhood) => (
+                      <TouchableOpacity
+                        key={n.id}
+                        style={[styles.chip, searchNeighborhoodId === n.id && styles.chipActive]}
+                        onPress={() => setSearchNeighborhoodId((prev) => (prev === n.id ? '' : n.id))}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.chipText, searchNeighborhoodId === n.id && styles.chipTextActive]}>{n.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* TYPE DE LOGEMENT */}
               <View style={styles.filterSection}>
-                <Text style={styles.filterLabel}>FOURCHETTE DE PRIX</Text>
-
-                {(searchLocationType === 'short' || searchLocationType === 'both') && (
-                  <View style={styles.priceBlock}>
-                    <Text style={styles.priceBlockTitle}>Prix par nuit</Text>
-                    <View style={styles.priceInputsRow}>
-                      <View style={styles.priceInputBox}>
-                        <Text style={styles.priceInputLabel}>Min</Text>
-                        <Text style={styles.priceInputValue}>{formatPrice(priceMinNight)} FCFA</Text>
-                      </View>
-                      <View style={styles.priceInputBox}>
-                        <Text style={styles.priceInputLabel}>Max</Text>
-                        <Text style={styles.priceInputValue}>{formatPrice(priceMaxNight)} FCFA</Text>
-                      </View>
+                <View style={styles.filterLabelRow}>
+                  <HomeIcon size={14} color="#fcd34d" />
+                  <Text style={styles.filterLabel}>TYPE DE LOGEMENT</Text>
+                  {searchPropertyTypes.length > 0 && (
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>{searchPropertyTypes.length}</Text>
                     </View>
-                  </View>
-                )}
-
-                {(searchLocationType === 'long' || searchLocationType === 'both') && (
-                  <View style={[styles.priceBlock, searchLocationType === 'both' && { marginTop: 16 }]}>
-                    <Text style={styles.priceBlockTitle}>Prix par mois</Text>
-                    <View style={styles.priceInputsRow}>
-                      <View style={styles.priceInputBox}>
-                        <Text style={styles.priceInputLabel}>Min</Text>
-                        <Text style={styles.priceInputValue}>{formatPrice(priceMinMonth)} FCFA</Text>
-                      </View>
-                      <View style={styles.priceInputBox}>
-                        <Text style={styles.priceInputLabel}>Max</Text>
-                        <Text style={styles.priceInputValue}>{formatPrice(priceMaxMonth)} FCFA</Text>
-                      </View>
-                    </View>
-                  </View>
-                )}
+                  )}
+                </View>
+                <View style={styles.chipsWrap}>
+                  {propertyTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type.value}
+                      style={[styles.chip, searchPropertyTypes.includes(type.value) && styles.chipActive]}
+                      onPress={() => handlePropertyTypeToggle(type.value)}
+                    >
+                      <Text style={[styles.chipText, searchPropertyTypes.includes(type.value) && styles.chipTextActive]}>
+                        {type.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            )}
+
+              {/* TYPE DE LOCATION */}
+              <View style={styles.filterSection}>
+                <View style={styles.filterLabelRow}>
+                  <HomeIcon size={14} color="#fcd34d" />
+                  <Text style={styles.filterLabel}>TYPE DE LOCATION</Text>
+                </View>
+                <View style={styles.locationTypeRow}>
+                  {locationTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type.value}
+                      style={[styles.locationTypeBtn, searchLocationType === type.value && styles.locationTypeBtnActive]}
+                      onPress={() => setSearchLocationType((prev) => (prev === type.value ? '' : type.value))}
+                    >
+                      <Text style={[styles.locationTypeBtnText, searchLocationType === type.value && styles.locationTypeBtnTextActive]}>
+                        {type.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* FOURCHETTE DE PRIX */}
+              {searchLocationType && (
+                <View style={styles.filterSection}>
+                  <Text style={styles.filterLabel}>FOURCHETTE DE PRIX</Text>
+
+                  {(searchLocationType === 'short' || searchLocationType === 'both') && (
+                    <View style={styles.priceBlock}>
+                      <Text style={styles.priceBlockTitle}>Prix par nuit</Text>
+
+                      {/* Histogramme */}
+                      <View style={styles.histogramRow}>
+                        {histogramNight.map((h: number, i: number) => {
+                          const barPrice = PRICE_NIGHT_MIN + (i / (histogramNight.length - 1)) * (PRICE_NIGHT_MAX - PRICE_NIGHT_MIN);
+                          const inRange = barPrice >= priceMinNight && barPrice <= priceMaxNight;
+                          return (
+                            <View
+                              key={`hn-${i}`}
+                              style={[
+                                styles.histogramBar,
+                                { height: `${h}%` as any },
+                                inRange ? styles.histogramBarActive : styles.histogramBarInactive,
+                              ]}
+                            />
+                          );
+                        })}
+                      </View>
+
+                      {/* Double slider */}
+                      <DualRangeSlider
+                        min={PRICE_NIGHT_MIN}
+                        max={PRICE_NIGHT_MAX}
+                        step={5000}
+                        valueMin={priceMinNight}
+                        valueMax={priceMaxNight}
+                        onChangeMin={(v: number) => setPriceMinNight(v)}
+                        onChangeMax={(v: number) => setPriceMaxNight(v)}
+                      />
+
+                      {/* Inputs éditables */}
+                      <View style={styles.priceInputsRow}>
+                        <View style={styles.priceInputBoxEdit}>
+                          <Text style={styles.priceInputLabel}>Minimum</Text>
+                          <TextInput
+                            keyboardType="number-pad"
+                            value={String(priceMinNight)}
+                            onChangeText={(txt) => {
+                              const n = Number(txt || 0);
+                              const v = clamp(n, PRICE_NIGHT_MIN, priceMaxNight - 5000);
+                              setPriceMinNight(v);
+                            }}
+                            style={styles.priceNumberInput}
+                            placeholder="Min"
+                            placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                          />
+                          <Text style={styles.priceSuffix}>FCFA</Text>
+                        </View>
+
+                        <View style={styles.priceInputBoxEdit}>
+                          <Text style={styles.priceInputLabel}>Maximum</Text>
+                          <TextInput
+                            keyboardType="number-pad"
+                            value={String(priceMaxNight)}
+                            onChangeText={(txt) => {
+                              const n = Number(txt || 0);
+                              const v = clamp(n, priceMinNight + 5000, PRICE_NIGHT_MAX);
+                              setPriceMaxNight(v);
+                            }}
+                            style={styles.priceNumberInput}
+                            placeholder="Max"
+                            placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                          />
+                          <Text style={styles.priceSuffix}>FCFA</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {(searchLocationType === 'long' || searchLocationType === 'both') && (
+                    <View style={[styles.priceBlock, searchLocationType === 'both' && { marginTop: 16 }]}>
+                      <Text style={styles.priceBlockTitle}>Prix par mois</Text>
+
+                      {/* Histogramme */}
+                      <View style={styles.histogramRow}>
+                        {histogramMonth.map((h: number, i: number) => {
+                          const barPrice = PRICE_MONTH_MIN + (i / (histogramMonth.length - 1)) * (PRICE_MONTH_MAX - PRICE_MONTH_MIN);
+                          const inRange = barPrice >= priceMinMonth && barPrice <= priceMaxMonth;
+                          return (
+                            <View
+                              key={`hm-${i}`}
+                              style={[
+                                styles.histogramBar,
+                                { height: `${h}%` as any },
+                                inRange ? styles.histogramBarActive : styles.histogramBarInactive,
+                              ]}
+                            />
+                          );
+                        })}
+                      </View>
+
+                      <DualRangeSlider
+                        min={PRICE_MONTH_MIN}
+                        max={PRICE_MONTH_MAX}
+                        step={50000}
+                        valueMin={priceMinMonth}
+                        valueMax={priceMaxMonth}
+                        onChangeMin={(v: number) => setPriceMinMonth(v)}
+                        onChangeMax={(v: number) => setPriceMaxMonth(v)}
+                      />
+
+                      <View style={styles.priceInputsRow}>
+                        <View style={styles.priceInputBoxEdit}>
+                          <Text style={styles.priceInputLabel}>Minimum</Text>
+                          <TextInput
+                            keyboardType="number-pad"
+                            value={String(priceMinMonth)}
+                            onChangeText={(txt) => {
+                              const n = Number(txt || 0);
+                              const v = clamp(n, PRICE_MONTH_MIN, priceMaxMonth - 50000);
+                              setPriceMinMonth(v);
+                            }}
+                            style={styles.priceNumberInput}
+                            placeholder="Min"
+                            placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                          />
+                          <Text style={styles.priceSuffix}>FCFA</Text>
+                        </View>
+
+                        <View style={styles.priceInputBoxEdit}>
+                          <Text style={styles.priceInputLabel}>Maximum</Text>
+                          <TextInput
+                            keyboardType="number-pad"
+                            value={String(priceMaxMonth)}
+                            onChangeText={(txt) => {
+                              const n = Number(txt || 0);
+                              const v = clamp(n, priceMinMonth + 50000, PRICE_MONTH_MAX);
+                              setPriceMaxMonth(v);
+                            }}
+                            style={styles.priceNumberInput}
+                            placeholder="Max"
+                            placeholderTextColor="rgba(253, 230, 138, 0.45)"
+                          />
+                          <Text style={styles.priceSuffix}>FCFA</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
 
             {/* DATES - CALENDRIER (maquette) */}
             <View style={[styles.filterSection, !searchLocationType && { opacity: 0.5 }]}>
@@ -1379,56 +1801,74 @@ const SearchScreen: React.FC = () => {
 
             {/* ÉQUIPEMENTS (backend) avec icônes A */}
             <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>ÉQUIPEMENTS SOUHAITÉS</Text>
-              {!equipmentsLoaded ? (
-                <ActivityIndicator size="small" color="#fbbf24" style={{ marginTop: 8 }} />
-              ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.amenitiesContainer}>
-                  {Array.from({ length: Math.ceil(equipments.length / 4) }).map((_, colIndex) => (
-                    <View key={colIndex} style={styles.amenityColumn}>
-                      {equipments.slice(colIndex * 4, colIndex * 4 + 4).map((eq) => {
-                        const Icon = pickAmenityIcon({ name: eq.name, category: (eq as any).category });
-                        const isSelected = searchAmenities.includes(eq.id);
+            <Text style={styles.filterLabel}>ÉQUIPEMENTS SOUHAITÉS</Text>
 
-                        return (
-                          <TouchableOpacity
-                            key={eq.id}
-                            style={[styles.amenityItem, isSelected && styles.amenityItemActive]}
-                            onPress={() => toggleAmenity(eq.id)}
-                          >
-                            <Icon size={18} color={isSelected ? '#fbbf24' : '#fcd34d'} />
-                            <Text style={[styles.amenityLabel, isSelected && styles.amenityLabelActive]}>{eq.name}</Text>
-                            {isSelected && <CheckIcon size={14} color="#fbbf24" />}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                {Array.from({ length: Math.ceil(equipments.length / 4) }).map((_, colIndex) => (
+                  <View key={`col-${colIndex}`} style={{ width: 170, gap: 10 }}>
+                    {equipments.slice(colIndex * 4, colIndex * 4 + 4).map((eq) => {
+                      const isSelected = searchAmenities.includes(eq.id);
+                      const label = getEquipmentLabel(eq);
+                      // ✅ mapping backend -> icône (utilise la logique pickAmenityIcon de la partie 1)
+                      const Icon = pickAmenityIcon({ name: label, category: getEquipmentCategory(eq) }); // si tu as déjà un mapping; sinon on garde un fallback
+                      return (
+                        <TouchableOpacity
+                          key={eq.id}
+                          onPress={() => toggleAmenity(eq.id)}
+                          activeOpacity={0.85}
+                          style={[styles.amenityBtn, isSelected && styles.amenityBtnActive]}
+                        >
+                          <View style={{ marginRight: 10 }}>
+                            {Icon ? <Icon size={18} color={isSelected ? '#fbbf24' : '#fcd34d'} /> : null}
+                          </View>
+                          <Text style={[styles.amenityText, isSelected && styles.amenityTextActive]} numberOfLines={1}>
+                            {label}
+                          </Text>
+                          {isSelected ? <CheckIcon size={14} color="#fbbf24" /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
           </ScrollView>
 
           {/* Footer Modal */}
           <View style={[styles.modalFooter, { paddingBottom: insets.bottom + 16 }]}>
-            <TouchableOpacity style={styles.searchButton} onPress={performSearch} activeOpacity={0.9}>
-              <LinearGradient colors={['#facc15', '#f59e0b']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.searchButtonGradient}>
-                <AdinkraSearchIcon size={24} color="#78350f" active />
-                <Text style={styles.searchButtonText}>Rechercher</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <TouchableOpacity style={styles.searchButton} onPress={performSearch} activeOpacity={0.9}>
+                <LinearGradient colors={['#facc15', '#f59e0b']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.searchButtonGradient}>
+                  <AdinkraSearchIcon size={24} color="#78350f" active />
+                  <Text style={styles.searchButtonText}>Rechercher</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ===============================
-          MODAL VOIR TOUT
+          MODAL VOIR TOUT (aligné gradient + particules + cards premium)
       =============================== */}
       <Modal visible={showAllSection !== null} animationType="slide" presentationStyle="fullScreen">
         {showAllSection && (
           <View style={styles.voirToutContainer}>
-            <LinearGradient colors={['#78350f', '#92400e', '#78350f']} style={StyleSheet.absoluteFillObject} />
+            {/* ✅ Alignement maquette web: même gradient que Home/Search */}
+            <LinearGradient
+              colors={VANDA_GRADIENT_COLORS as any}
+              locations={VANDA_GRADIENT_LOCATIONS as any}
+              style={StyleSheet.absoluteFillObject}
+            />
             <KongoPattern />
+
+            {/* ✅ Particules persistantes réutilisées (même tableau => pas de téléportation) */}
+            <View style={styles.particlesContainer}>
+              {particles.map((p) => (
+                <FloatingParticle key={`all-${p.id}`} {...p} />
+              ))}
+            </View>
 
             <View style={[styles.voirToutHeader, { paddingTop: insets.top + 8 }]}>
               <TouchableOpacity
@@ -1441,10 +1881,11 @@ const SearchScreen: React.FC = () => {
                 <ArrowLeftIcon size={20} color="#fcd34d" />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.voirToutSearchBar} onPress={() => setShowSearchModal(true)} activeOpacity={0.8}>
+              {/* ✅ Ouvre le modal avec animation */}
+              <TouchableOpacity style={styles.voirToutSearchBar} onPress={openSearchModal} activeOpacity={0.8}>
                 <View style={styles.voirToutSearchBarContent}>
                   <Text style={styles.voirToutSearchTitle} numberOfLines={1}>
-                    {showAllSection.id === 'search-results' ? buildFilterTitle() : (showAllSection.subtitle || showAllSection.title)}
+                    {showAllSection.id === 'search-results' ? buildFilterTitle() : showAllSection.subtitle || showAllSection.title}
                   </Text>
                   <Text style={styles.voirToutSearchSubtitle} numberOfLines={1}>
                     {showAllSection.id === 'search-results' ? buildFilterDetails() : 'Dates · Voyageurs'}
@@ -1452,7 +1893,7 @@ const SearchScreen: React.FC = () => {
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={() => setShowSearchModal(true)}>
+              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={openSearchModal}>
                 <SlidersIcon size={18} color="#fcd34d" />
               </TouchableOpacity>
             </View>
@@ -1487,8 +1928,16 @@ const SearchScreen: React.FC = () => {
                     const nights = calculateNights();
                     const isFav = favorites.has(property.id);
 
+                    // ✅ Qualité: Pressable scale + spacing premium
                     return (
-                      <TouchableOpacity key={property.id} style={styles.voirToutCard} activeOpacity={0.95} onPress={() => navigateToProperty(property.id)}>
+                      <Pressable
+                        key={property.id}
+                        onPress={() => navigateToProperty(property.id)}
+                        style={({ pressed }) => [
+                          styles.voirToutCard,
+                          pressed && { transform: [{ scale: 0.985 }] },
+                        ]}
+                      >
                         <View style={styles.voirToutImageContainer}>
                           <ScrollView
                             horizontal
@@ -1514,7 +1963,8 @@ const SearchScreen: React.FC = () => {
                             </View>
                           ) : null}
 
-                          <TouchableOpacity style={styles.voirToutFavoriteBtn} onPress={() => toggleFavorite(property.id)}>
+                          {/* ✅ Qualité: bouton favori premium (fond léger) */}
+                          <TouchableOpacity style={[styles.voirToutFavoriteBtn, styles.voirToutFavoriteBtnBg]} onPress={() => toggleFavorite(property.id)}>
                             <HeartIcon size={26} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
                           </TouchableOpacity>
 
@@ -1527,12 +1977,12 @@ const SearchScreen: React.FC = () => {
 
                         <View style={styles.voirToutInfo}>
                           <View style={styles.voirToutInfoHeader}>
-                            <Text style={styles.voirToutTitle} numberOfLines={1}>{property.title}</Text>
+                            <Text style={styles.voirToutTitle} numberOfLines={1}>
+                              {property.title}
+                            </Text>
                             <View style={styles.voirToutRating}>
                               <StarIcon size={14} color="#fbbf24" filled />
-                              <Text style={styles.voirToutRatingText}>
-                                {property.rating ? property.rating.toFixed(1) : 'Nouveau'}
-                              </Text>
+                              <Text style={styles.voirToutRatingText}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
                               <Text style={styles.voirToutReviews}>({property.reviewsCount})</Text>
                             </View>
                           </View>
@@ -1563,7 +2013,7 @@ const SearchScreen: React.FC = () => {
                             </Text>
                           )}
                         </View>
-                      </TouchableOpacity>
+                      </Pressable>
                     );
                   })}
 
@@ -1587,6 +2037,7 @@ const SearchScreen: React.FC = () => {
 
 // ===============================
 // Styles (inchangés / issus de ta maquette A)
+// + compléments (web-like modal + cards premium)
 // ===============================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#78350f' },
@@ -1627,6 +2078,13 @@ const styles = StyleSheet.create({
   guestFavoriteBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
   guestFavoriteBadgeText: { color: '#78350f', fontSize: 10, fontWeight: '600' },
   favoriteButton: { position: 'absolute', top: 8, right: 8, padding: 4 },
+
+  // ✅ Ajout: fond léger pour le bouton favori (hitbox + premium)
+  favoriteButtonBg: {
+    backgroundColor: 'rgba(0,0,0,0.14)',
+    borderRadius: 999,
+  },
+
   propertyInfo: { paddingHorizontal: 2 },
   propertyTitle: { color: '#ffffff', fontWeight: '600', fontSize: 13, marginBottom: 2 },
   propertyLocation: { color: '#fcd34d', fontSize: 11, marginBottom: 2 },
@@ -1644,6 +2102,16 @@ const styles = StyleSheet.create({
   modalClearBtn: { color: '#fbbf24', fontSize: 14, fontWeight: '500' },
   modalScroll: { flex: 1 },
   modalScrollContent: { padding: 16 },
+
+  // ✅ Ajout: Modal web-like (backdrop + sheet)
+  searchModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  searchModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
 
   // Filters
   filterSection: { marginBottom: 24 },
@@ -1755,15 +2223,63 @@ const styles = StyleSheet.create({
   voirToutScroll: { flex: 1 },
   voirToutScrollContent: { padding: 16, gap: 24 },
   voirToutCard: { marginBottom: 8 },
-  voirToutImageContainer: { position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
+
+  // ✅ Upgrade shadow + rounding (web-like "shadow-xl")
+  voirToutImageContainer: {
+    position: 'relative',
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+
   voirToutImage: { width: SCREEN_WIDTH - 32, height: 256, resizeMode: 'cover' },
   voirToutImageOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
-  voirToutBadgeCoup: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-  voirToutBadgeCoupText: { color: '#78350f', fontSize: 12, fontWeight: '600' },
+
+  // ✅ Badge premium (fond + ombre)
+  voirToutBadgeCoup: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  voirToutBadgeCoupText: {
+    color: '#92400e',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // ✅ Favorite button premium (fond léger)
   voirToutFavoriteBtn: { position: 'absolute', top: 12, right: 12, padding: 4 },
+  voirToutFavoriteBtnBg: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 999,
+  },
+
   voirToutDots: { position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  voirToutDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
-  voirToutDotActive: { backgroundColor: '#ffffff' },
+
+  // ✅ Dots (white / white40) + spacing identique web
+  voirToutDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.40)',
+    marginHorizontal: 3,
+  },
+  voirToutDotActive: { backgroundColor: '#fff' },
+
   voirToutInfo: {},
   voirToutInfoHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 },
   voirToutTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', flex: 1, marginRight: 8 },
@@ -1799,6 +2315,134 @@ const styles = StyleSheet.create({
   destinationInfo: { position: 'absolute', bottom: 10, left: 10 },
   destinationName: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   destinationCount: { color: '#fcd34d', fontSize: 11 },
+
+  // Search inputs
+  searchInputWrap: {
+    backgroundColor: 'rgba(120, 53, 15, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.35)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    color: '#fff',
+    fontSize: 14,
+  },
+
+  // Histogramme
+  histogramRow: {
+    height: 72,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    paddingHorizontal: 2,
+    marginBottom: 10,
+  },
+  histogramBar: {
+    flex: 1,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  histogramBarActive: {
+    backgroundColor: '#fbbf24',
+  },
+  histogramBarInactive: {
+    backgroundColor: 'rgba(146, 64, 14, 0.55)',
+  },
+
+  // Range slider
+  rangeWrap: {
+    height: 26,
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  rangeTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(146, 64, 14, 0.45)',
+  },
+  rangeTrackActive: {
+    position: 'absolute',
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#fbbf24',
+  },
+  rangeThumb: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#fbbf24',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+
+  // Price inputs (editable)
+  priceInputBoxEdit: {
+    flex: 1,
+    backgroundColor: 'rgba(120, 53, 15, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.35)',
+    borderRadius: 14,
+    padding: 12,
+    position: 'relative',
+  },
+  priceNumberInput: {
+    marginTop: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(120, 53, 15, 0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.35)',
+    color: '#fff',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  priceSuffix: {
+    position: 'absolute',
+    right: 12,
+    bottom: 16,
+    fontSize: 11,
+    color: '#fbbf24',
+    opacity: 0.9,
+  },
+
+  // Amenities (new layout)
+  amenityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(180, 83, 9, 0.25)',
+    backgroundColor: 'rgba(120, 53, 15, 0.20)',
+  },
+  amenityBtnActive: {
+    borderColor: 'rgba(251, 191, 36, 0.8)',
+    backgroundColor: 'rgba(251, 191, 36, 0.12)',
+  },
+  amenityText: {
+    flex: 1,
+    color: 'rgba(253, 230, 138, 0.9)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  amenityTextActive: {
+    color: '#fff',
+  },
 });
 
 export default SearchScreen;

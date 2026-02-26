@@ -1,6 +1,6 @@
 // app/(tabs)/search.tsx
 import React from 'react';
-import SearchScreen from '../../src/screens/SearchScreen';
+import SearchScreen from '../src/screens/SearchScreen';
 
 export default function SearchRoute() {
   return <SearchScreen />;

@@ -32,7 +32,7 @@ const AdinkraHeart: React.FC<AdinkraIconProps> = ({ size = 24, color = '#fbbf24'
 
 const AdinkraCalendar: React.FC<AdinkraIconProps> = ({ size = 24, color = '#fbbf24', active = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
-    <Rect x="4" y="6" width="16" height="14" rx="2" fill={active ? 'none' : 'none'} />
+    <Rect x="4" y="6" width="16" height="14" rx="2" />
     <Path d="M4 10h16" />
     <Path d="M9 6V4" />
     <Path d="M15 6V4" />
@@ -58,11 +58,17 @@ const AdinkraProfile: React.FC<AdinkraIconProps> = ({ size = 24, color = '#fbbf2
   </Svg>
 );
 
-function iconForRoute(routeName: string) {
-  // names = app/(tabs)/<name>.tsx
+// ✅ Tabs autorisés pour le role guest (footer)
+const GUEST_TABS = ['index', 'favorites', 'bookings', 'messages', 'profile'] as const;
+type GuestTabName = (typeof GUEST_TABS)[number];
+
+function isGuestTab(name: string): name is GuestTabName {
+  return (GUEST_TABS as readonly string[]).includes(name);
+}
+
+function iconForRoute(routeName: GuestTabName) {
   switch (routeName) {
     case 'index':
-    case 'search':
       return { Icon: AdinkraSearch, label: 'Rechercher' };
     case 'favorites':
       return { Icon: AdinkraHeart, label: 'Favoris' };
@@ -72,37 +78,70 @@ function iconForRoute(routeName: string) {
       return { Icon: AdinkraMessages, label: 'Messages' };
     case 'profile':
       return { Icon: AdinkraProfile, label: 'Profil' };
-    default:
-      return { Icon: AdinkraSearch, label: routeName };
   }
 }
 
 export default function VandaTabBar(props: BottomTabBarProps) {
   const { state, descriptors, navigation } = props;
 
-  const items = useMemo(() => {
-    return state.routes.map((route, index) => {
-      const isFocused = state.index === index;
-      const { Icon, label } = iconForRoute(route.name);
-      const options = descriptors[route.key]?.options || {};
-      const title = (options.title as string) || label;
+  // ✅ Route réellement active (peut être une route non-tab comme property/[id])
+  const focusedKey = state.routes[state.index]?.key;
 
-      return { route, index, isFocused, Icon, title };
-    });
-  }, [state, descriptors]);
+  // ✅ On n’affiche QUE les tabs voulus (sinon on ignore)
+  const items = useMemo(() => {
+    const visibleRoutes = state.routes.filter((r) => isGuestTab(r.name));
+
+    return visibleRoutes.map((route) => {
+        const isFocused = route.key === focusedKey;
+
+        // ✅ TS fix: on “ré-assure” le type après le guard
+        const tabName = route.name as GuestTabName;
+
+        const { Icon, label } = iconForRoute(tabName);
+        const options = descriptors[route.key]?.options || {};
+        const title = (options.title as string) || label;
+
+        return { route, isFocused, Icon, title };
+    });       
+    }, [state.routes, state.index, descriptors, focusedKey]);
+
+  // ✅ Si pour une raison X on n’a pas encore les routes tabs, on ne rend rien
+  if (!items.length) return null;
 
   return (
     <View style={styles.footer}>
-      <LinearGradient colors={['#451a03', '#78350f']} start={{ x: 0, y: 1 }} end={{ x: 0, y: 0 }} style={styles.footerGradient}>
+      <LinearGradient
+        colors={['#451a03', '#78350f']}
+        start={{ x: 0, y: 1 }}
+        end={{ x: 0, y: 0 }}
+        style={styles.footerGradient}
+      >
         <View style={styles.footerContent}>
-          {items.map(({ route, index, isFocused, Icon, title }) => {
+          {items.map(({ route, isFocused, Icon, title }) => {
             const onPress = () => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name as never);
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+
+              if (!event.defaultPrevented) {
+                navigation.navigate(route.name as never);
+              }
+            };
+
+            const onLongPress = () => {
+              navigation.emit({ type: 'tabLongPress', target: route.key });
             };
 
             return (
-              <TouchableOpacity key={route.key} style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
+              <TouchableOpacity
+                key={route.key}
+                style={styles.navItem}
+                onPress={onPress}
+                onLongPress={onLongPress}
+                activeOpacity={0.7}
+              >
                 <Icon size={24} color={isFocused ? '#fbbf24' : '#92400e'} active={isFocused} />
                 <Text style={[styles.navLabel, { color: isFocused ? '#fbbf24' : '#92400e' }]}>{title}</Text>
                 {isFocused && <View style={styles.navIndicator} />}

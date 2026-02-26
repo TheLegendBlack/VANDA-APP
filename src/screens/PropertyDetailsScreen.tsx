@@ -1543,7 +1543,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
       </View>
 
 
-      /* ======= MODAL CALENDRIER ======= */
+      {/* ======= MODAL CALENDRIER ======= */}
       <Modal visible={showCalendarModal} animationType="slide" transparent onRequestClose={() => setShowCalendarModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowCalendarModal(false)} />
@@ -1693,7 +1693,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL RÉSERVATION ======= */
+      {/* ======= MODAL RÉSERVATION ======= */}
       <Modal visible={showBookingModal} animationType="slide" transparent onRequestClose={() => setShowBookingModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowBookingModal(false)} />
@@ -1848,7 +1848,8 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL VIEWER D'IMAGES ======= */
+
+      {/* ======= MODAL VIEWER D'IMAGES ======= */}
       <Modal visible={showImageViewer} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.viewerContainer}>
           <View style={[styles.viewerHeader, { paddingTop: insets.top + 8 }]}>
@@ -1955,7 +1956,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL DESCRIPTION ======= */
+      {/* ======= MODAL DESCRIPTION ======= */}
       <Modal visible={showDescriptionModal} animationType="slide" transparent onRequestClose={() => setShowDescriptionModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowDescriptionModal(false)} />
@@ -1978,7 +1979,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL COMMENTAIRES ======= */
+      {/* ======= MODAL COMMENTAIRES ======= */}
       <Modal visible={showReviewsModal} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.fullScreenModal}>
           <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
@@ -2046,7 +2047,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL ÉQUIPEMENTS ======= */
+      {/* ======= MODAL ÉQUIPEMENTS ======= */}
       <Modal visible={showAmenitiesModal} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.fullScreenModal}>
           <LinearGradient colors={['#78350f', '#92400e', '#78350f', '#7f1d1d', '#78350f']} locations={[0, 0.25, 0.5, 0.75, 1]} style={StyleSheet.absoluteFillObject} />
@@ -2077,7 +2078,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL HÔTE ======= */
+      {/* ======= MODAL HÔTE ======= */}
       <Modal visible={showHostModal} animationType="slide" transparent onRequestClose={() => setShowHostModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowHostModal(false)} />
@@ -2193,7 +2194,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL SIGNALEMENT ======= */
+      {/* ======= MODAL SIGNALEMENT ======= */}
       <Modal
         visible={showReportModal}
         animationType="slide"
@@ -2364,7 +2365,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL PAIEMENT MOBILE MONEY ======= */
+      {/* ======= MODAL PAIEMENT MOBILE MONEY ======= */}
       <Modal visible={showPaymentModal} animationType="slide" transparent onRequestClose={closePaymentModal}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => paymentStatus === 'idle' && closePaymentModal()} />
@@ -2533,7 +2534,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL CONDITIONS D'ANNULATION ======= */
+      {/* ======= MODAL CONDITIONS D'ANNULATION ======= */}
       <Modal visible={showCancellationModal} animationType="slide" transparent onRequestClose={() => setShowCancellationModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowCancellationModal(false)} />
@@ -2605,7 +2606,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL DÉTAIL DU PRIX ======= */
+      {/* ======= MODAL DÉTAIL DU PRIX ======= */}
       <Modal visible={showPriceDetailModal} animationType="slide" transparent onRequestClose={() => setShowPriceDetailModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowPriceDetailModal(false)} />
@@ -2655,7 +2656,7 @@ const PropertyDetailsScreen: React.FC<Props> = ({ propertyId }) => {
         </View>
       </Modal>
 
-      /* ======= MODAL PAIEMENT DIFFÉRÉ ======= */
+      {/* ======= MODAL PAIEMENT DIFFÉRÉ ======= */}
       <Modal visible={showDeferredPaymentModal} animationType="slide" transparent onRequestClose={() => setShowDeferredPaymentModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowDeferredPaymentModal(false)} />
