@@ -781,11 +781,18 @@ const SearchScreen: React.FC = () => {
       }),
     ]).start();
   };
+  
+  type SearchModalMode = 'search' | 'filter';
 
-  const openSearchModal = () => {
+  const [searchModalMode, setSearchModalMode] = useState<SearchModalMode>('search');
+
+  const openSearchModal = (mode: SearchModalMode = 'search') => {
+    setSearchModalMode(mode);
+
     if (showSearchModal && !isSearchModalClosing) return;
     setShowSearchModal(true);
-    // ✅ garantit que le modal est monté avant l'anim (comme web)
+
+    // ✅ garantit montage avant anim
     requestAnimationFrame(animateOpenSearchModal);
   };
 
@@ -1249,7 +1256,7 @@ const SearchScreen: React.FC = () => {
         {/* HEADER */}
         <View style={styles.header}>
           {/* ✅ Remplace setShowSearchModal(true) par openSearchModal() (animation web-like) */}
-          <TouchableOpacity style={styles.searchBar} onPress={openSearchModal} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.searchBar} onPress={() => openSearchModal('search')} activeOpacity={0.8}>
             <LinearGradient
               colors={['rgba(120, 53, 15, 0.8)', 'rgba(127, 29, 29, 0.8)']}
               start={{ x: 0, y: 0 }}
@@ -1311,10 +1318,11 @@ const SearchScreen: React.FC = () => {
                     onPress={() => {
                       // ✅ UX maquette: en choisissant une destination, on ouvre le modal avec animation
                       setSearchCity(name);
+                      setSearchCityInput('');
                       // ✅ multi-quartiers => reset liste
                       setSearchNeighborhoodIds([]);
                       setSearchNeighborhoodInput('');
-                      openSearchModal();
+                      openSearchModal('filter'); // ✅ tu arrives dans le “vrai” filtre avec la ville pré-sélectionnée
                     }}
                   >
                     <Image source={{ uri: image }} style={styles.destinationImage} />
@@ -1338,7 +1346,10 @@ const SearchScreen: React.FC = () => {
       =============================== */}
       <Modal visible={showSearchModal} transparent animationType="none" statusBarTranslucent>
         {/* ✅ Backdrop cliquable: ferme + reset (comportement web) */}
-        <Pressable style={styles.searchModalBackdrop} onPress={() => closeSearchModal(true)} />
+        <Pressable
+          style={styles.searchModalBackdrop}
+          onPress={() => closeSearchModal(searchModalMode === 'search')}
+        />
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.searchModalRoot}>
           <Animated.View
@@ -1368,10 +1379,15 @@ const SearchScreen: React.FC = () => {
             {/* Header Modal */}
             <View style={[styles.modalHeader, { paddingTop: insets.top + 16 }]}>
               {/* ✅ Close: ferme + reset (comme web) */}
-              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => closeSearchModal(true)}>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => closeSearchModal(searchModalMode === 'search')}
+              >
                 <XIcon size={20} color="#fbbf24" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Rechercher</Text>
+              <Text style={styles.modalTitle}>
+                {searchModalMode === 'filter' ? 'Filtres' : 'Rechercher'}
+              </Text>
               <TouchableOpacity onPress={resetFilters}>
                 <Text style={styles.modalClearBtn}>Effacer</Text>
               </TouchableOpacity>
@@ -1991,7 +2007,7 @@ const SearchScreen: React.FC = () => {
               </TouchableOpacity>
 
               {/* ✅ Ouvre le modal avec animation */}
-              <TouchableOpacity style={styles.voirToutSearchBar} onPress={openSearchModal} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.voirToutSearchBar} onPress={() => openSearchModal('filter')} activeOpacity={0.8}>
                 <View style={styles.voirToutSearchBarContent}>
                   <Text style={styles.voirToutSearchTitle} numberOfLines={1}>
                     {showAllSection.id === 'search-results' ? buildFilterTitle() : showAllSection.subtitle || showAllSection.title}
@@ -2002,7 +2018,7 @@ const SearchScreen: React.FC = () => {
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={openSearchModal}>
+              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={() => openSearchModal('filter')}>
                 <SlidersIcon size={18} color="#fcd34d" />
               </TouchableOpacity>
             </View>
