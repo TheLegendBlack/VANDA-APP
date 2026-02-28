@@ -107,6 +107,11 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
   const minX = trackWidth > 0 ? ((valueMin - min) / range) * trackWidth : 0;
   const maxX = trackWidth > 0 ? ((valueMax - min) / range) * trackWidth : 0;
 
+  // ✅ Refs pour capturer la position de départ du thumb au début du drag
+  // Évite le drift cumulatif causé par minX/maxX recalculés à chaque render
+  const minStartX = useRef(0);
+  const maxStartX = useRef(0);
+
   const xToValue = (x: number) => {
     const ratio = trackWidth > 0 ? clamp(x, 0, trackWidth) / trackWidth : 0;
     const raw = min + ratio * range;
@@ -119,8 +124,11 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          minStartX.current = minX;
+        },
         onPanResponderMove: (_, gestureState) => {
-          const next = xToValue(minX + gestureState.dx);
+          const next = xToValue(minStartX.current + gestureState.dx);
           onChangeMin(clamp(next, min, Math.max(min, valueMax - step)));
         },
       }),
@@ -132,8 +140,11 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          maxStartX.current = maxX;
+        },
         onPanResponderMove: (_, gestureState) => {
-          const next = xToValue(maxX + gestureState.dx);
+          const next = xToValue(maxStartX.current + gestureState.dx);
           onChangeMax(clamp(next, Math.min(max, valueMin + step), max));
         },
       }),
@@ -819,7 +830,7 @@ const SearchScreen: React.FC = () => {
       if (!finished) return;
       setShowSearchModal(false);
       setIsSearchModalClosing(false);
-      if (resetOnClose) resetFilters();
+      if (resetOnClose) resetFiltersSmart();
     });
   };
 
@@ -961,6 +972,38 @@ const SearchScreen: React.FC = () => {
     setShowCalendar(null);
   };
 
+  // ✅ Reset intelligent selon le contexte (Voir tout ville vs search-results)
+  // Garde la ville de la section si on est dans Voir tout d'une ville home
+  const resetFiltersSmart = () => {
+    const inVoirTout = !!showAllSection;
+    const isSearchResults = showAllSection?.id === 'search-results';
+    const keepCityFromSection =
+      inVoirTout &&
+      !isSearchResults &&
+      !showAllSection?.isConditional &&
+      !!showAllSection?.subtitle;
+
+    const cityToKeep = keepCityFromSection ? showAllSection!.subtitle! : '';
+
+    setSearchCity(cityToKeep);
+    setSearchCityInput('');
+    setSearchNeighborhoodIds([]);
+    setSearchNeighborhoodInput('');
+    setSearchPropertyTypes([]);
+    setSearchLocationType('');
+    setSearchGuests(0);
+    setSearchBedrooms(0);
+    setSearchBeds(0);
+    setSearchAmenities([]);
+    setPriceMinNight(PRICE_NIGHT_MIN);
+    setPriceMaxNight(PRICE_NIGHT_MAX);
+    setPriceMinMonth(PRICE_MONTH_MIN);
+    setPriceMaxMonth(PRICE_MONTH_MAX);
+    setSearchArrivalDate(null);
+    setSearchDepartureDate(null);
+    setShowCalendar(null);
+  };
+
   // ===== Calendrier (visuel maquette conservé)
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => {
@@ -1068,469 +1111,12 @@ const SearchScreen: React.FC = () => {
     return null;
   };
 
-  const buildFilterTitle = () => {
-    const parts: string[] = [];
-    parts.push(searchCity || 'Toutes les villes');
-    if (searchPropertyTypes.length === 1) {
-      const typeLabel = propertyTypes.find((t) => t.value === searchPropertyTypes[0])?.label;
-      if (typeLabel) parts.push(typeLabel === 'Appartement' ? 'Appart.' : typeLabel);
-    } else if (searchPropertyTypes.length > 1) {
-      parts.push(`${searchPropertyTypes.length} types`);
-    }
-    if (searchLocationType) {
-      if (searchLocationType === 'short') parts.push('Courte durée');
-      else if (searchLocationType === 'long') parts.push('Longue durée');
-      else if (searchLocationType === 'both') parts.push('Toute durée');
-    }
-    return parts.join(' · ');
-  };
-
-  const buildFilterDetails = () => {
-    const parts: string[] = [];
-    if (searchArrivalDate) parts.push(formatPeriodShort() || '');
-    else parts.push('Dates flexibles');
-    parts.push(`${searchGuests} voy.`);
-    if (searchBedrooms > 1) parts.push(`${searchBedrooms} ch.`);
-    return parts.join(' · ');
-  };
-
-  const performSearch = async () => {
-    closeSearchModal(false);
-    setSearchLoading(true);
-
-    const params: SearchPropertiesParams = {
-      limit: 50,
-      offset: 0,
-      sort: 'recommended',
-    };
-
-    if (searchCity) params.city = searchCity;
-    // NB: backend accepte 1 seul neighborhoodId pour l’instant.
-    // UI permet multi-select, on envoie le premier sélectionné.
-    if (searchNeighborhoodId) params.neighborhoodId = searchNeighborhoodId;
-
-    if (searchPropertyTypes.length === 1) params.propertyType = searchPropertyTypes[0];
-
-    if (searchLocationType === 'short') params.rentalType = 'short_term';
-    if (searchLocationType === 'long') params.rentalType = 'long_term';
-    // both => pas de filtre
-
-    if (searchGuests > 0) params.guests = searchGuests;
-    if (searchBedrooms > 0) params.bedrooms = searchBedrooms;
-    if (searchAmenities.length > 0) params.equipmentIds = searchAmenities;
-
-    // prix
-    if (searchLocationType === 'short' || searchLocationType === 'both' || searchLocationType === '') {
-      if (priceMinNight > PRICE_NIGHT_MIN) params.minPrice = priceMinNight;
-      if (priceMaxNight < PRICE_NIGHT_MAX) params.maxPrice = priceMaxNight;
-    }
-    if (searchLocationType === 'long') {
-      if (priceMinMonth > PRICE_MONTH_MIN) params.minPrice = priceMinMonth;
-      if (priceMaxMonth < PRICE_MONTH_MAX) params.maxPrice = priceMaxMonth;
-    }
-
-    try {
-      const data = await searchProperties(params);
-      const mapped: UiProperty[] = (data.items || []).map(mapCardToUi);
-
-      // sync favoris depuis résultats
-      const fav = new Set(favorites);
-      mapped.forEach((p) => (p.isFavorite ? fav.add(p.id) : fav.delete(p.id)));
-      setFavorites(fav);
-
-      setSearchTotal(data.total || mapped.length);
-
-      const searchSection: Section = {
-        id: 'search-results',
-        title: 'Résultats de recherche',
-        subtitle: buildFilterTitle(),
-        properties: mapped,
-        isConditional: true,
-      };
-      setShowAllSection(searchSection);
-    } catch (e) {
-      console.error('Erreur recherche:', e);
-      setSearchTotal(0);
-      setShowAllSection({
-        id: 'search-results',
-        title: 'Résultats de recherche',
-        subtitle: buildFilterTitle(),
-        properties: [],
-        isConditional: true,
-      });
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const renderPropertyCard = (property: UiProperty, isRecent: boolean) => {
-    const displayPrice = getDisplayPrice(property);
-    const cardWidth = isRecent ? CARD_WIDTH_RECENT : CARD_WIDTH_NORMAL;
-    const imageHeight = isRecent ? cardWidth : 144;
-    const isFav = favorites.has(property.id);
-
-    // ✅ Qualité: press feedback (web-like) => on passe en Pressable + scale léger
-    return (
-      <Pressable
-        key={property.id}
-        onPress={() => navigateToProperty(property.id)}
-        style={({ pressed }) => [
-          styles.propertyCard,
-          { width: cardWidth, transform: [{ scale: pressed ? 0.985 : 1 }] },
-        ]}
-      >
-        <View style={[styles.imageContainer, { height: imageHeight }]}>
-          <Image source={{ uri: property.image }} style={styles.propertyImage} />
-          <LinearGradient colors={['transparent', 'transparent', 'rgba(0,0,0,0.4)']} style={styles.imageOverlay} />
-
-          {property.isGuestFavorite && (
-            <View style={styles.guestFavoriteBadge}>
-              <Text style={styles.guestFavoriteBadgeText}>Coup de cœur</Text>
-            </View>
-          )}
-
-          {/* ✅ Qualité: bouton favori avec léger fond (hitbox + premium) */}
-          <TouchableOpacity
-            style={[styles.favoriteButton, styles.favoriteButtonBg]}
-            onPress={() => toggleFavorite(property.id)}
-            activeOpacity={0.8}
-          >
-            <HeartIcon size={20} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.propertyInfo}>
-          {isRecent ? (
-            <>
-              <Text style={styles.propertyTitle} numberOfLines={2}>
-                {property.title.includes('·') ? property.title.split('·')[1]?.trim() : property.title}
-              </Text>
-              <Text style={styles.propertyLocation}>{property.location}</Text>
-              <View style={styles.propertyMeta}>
-                <Text style={styles.propertyMetaText}>
-                  {property.beds} lit{property.beds > 1 ? 's' : ''}
-                </Text>
-                <Text style={styles.propertyMetaDot}>·</Text>
-                <StarIcon size={10} color="#fbbf24" filled />
-                <Text style={styles.propertyRating}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.propertyTitle} numberOfLines={2}>
-                {property.title}
-              </Text>
-              <Text style={styles.propertyLocation}>{property.location}</Text>
-              <View style={styles.propertyMeta}>
-                <Text style={styles.propertyPrice}>
-                  {formatPrice(displayPrice.price)} FCFA/{displayPrice.unit}
-                </Text>
-                <Text style={styles.propertyMetaDot}>·</Text>
-                <StarIcon size={10} color="#fbbf24" filled />
-                <Text style={styles.propertyRating}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </Pressable>
-    );
-  };
-
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-      {/* ✅ Alignement maquette web: gradient unique VANDA (3 stops) */}
-      <LinearGradient
-        colors={VANDA_GRADIENT_COLORS as any}
-        locations={VANDA_GRADIENT_LOCATIONS as any}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <KongoPattern />
-
-      {/* ✅ Particules persistantes: on réutilise le même tableau `particles` */}
-      <View style={styles.particlesContainer}>
-        {particles.map((p) => (
-          <FloatingParticle key={p.id} {...p} />
-        ))}
-      </View>
-
-      <View style={[styles.content, { paddingTop: insets.top }]}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          {/* ✅ Remplace setShowSearchModal(true) par openSearchModal() (animation web-like) */}
-          <TouchableOpacity style={styles.searchBar} onPress={() => openSearchModal('search')} activeOpacity={0.8}>
-            <LinearGradient
-              colors={['rgba(120, 53, 15, 0.8)', 'rgba(127, 29, 29, 0.8)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.searchBarGradient}
-            >
-              <SearchIconGradient size={28} />
-              <View style={styles.searchBarText}>
-                <Text style={styles.searchBarTitle}>Rechercher un logement</Text>
-                <Text style={styles.searchBarSubtitle}>Destination · Dates · Voyageurs</Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* SECTIONS */}
-        {loadingHome ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#fbbf24" />
-            <Text style={styles.loadingText}>Chargement des logements...</Text>
-          </View>
-        ) : (
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fbbf24" colors={['#fbbf24']} />
-            }
-          >
-            {sections.map((section) => (
-              <View key={section.id} style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionTitleContainer}>
-                    <Text style={styles.sectionTitle}>{section.title}</Text>
-                    {section.subtitle && <Text style={styles.sectionSubtitle}> · {section.subtitle}</Text>}
-                  </View>
-                  <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.7} onPress={() => setShowAllSection(section)}>
-                    <Text style={styles.seeAllText}>Voir tout</Text>
-                    <ChevronRightIcon size={16} color="#fbbf24" />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.propertiesList}>
-                  {section.properties.map((p) => renderPropertyCard(p, section.id === 'recent'))}
-                </ScrollView>
-              </View>
-            ))}
-
-            {/* DESTINATIONS POPULAIRES */}
-            <View style={styles.destinationsSection}>
-              <Text style={styles.destinationsTitle}>Destinations populaires</Text>
-              <View style={styles.destinationsGrid}>
-                {Object.entries(destinationImages).map(([name, image]) => (
-                  <TouchableOpacity
-                    key={name}
-                    style={styles.destinationCard}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      // ✅ UX maquette: en choisissant une destination, on ouvre le modal avec animation
-                      setSearchCity(name);
-                      setSearchCityInput('');
-                      // ✅ multi-quartiers => reset liste
-                      setSearchNeighborhoodIds([]);
-                      setSearchNeighborhoodInput('');
-                      openSearchModal('filter'); // ✅ tu arrives dans le “vrai” filtre avec la ville pré-sélectionnée
-                    }}
-                  >
-                    <Image source={{ uri: image }} style={styles.destinationImage} />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.destinationOverlay} />
-                    <View style={styles.destinationInfo}>
-                      <Text style={styles.destinationName}>{name}</Text>
-                      <Text style={styles.destinationCount}>
-                        {sections.find((s) => s.subtitle === name)?.properties.length || 0} logements
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        )}
-      </View>
-
-      {/* ===============================
-          MODAL VOIR TOUT (aligné gradient + particules + cards premium)
-      =============================== */}
-      <Modal visible={showAllSection !== null} animationType="slide" presentationStyle="fullScreen">
-        {showAllSection && (
-          <View style={styles.voirToutContainer}>
-            {/* ✅ Alignement maquette web: même gradient que Home/Search */}
-            <LinearGradient
-              colors={VANDA_GRADIENT_COLORS as any}
-              locations={VANDA_GRADIENT_LOCATIONS as any}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <KongoPattern />
-
-            {/* ✅ Particules persistantes réutilisées (même tableau => pas de téléportation) */}
-            <View style={styles.particlesContainer}>
-              {particles.map((p) => (
-                <FloatingParticle key={`all-${p.id}`} {...p} />
-              ))}
-            </View>
-
-            <View style={[styles.voirToutHeader, { paddingTop: insets.top + 8 }]}>
-              <TouchableOpacity
-                style={styles.voirToutBackBtn}
-                onPress={() => {
-                  setShowAllSection(null);
-                  if (showAllSection?.id === 'search-results') resetFilters();
-                }}
-              >
-                <ArrowLeftIcon size={20} color="#fcd34d" />
-              </TouchableOpacity>
-
-              {/* ✅ Ouvre le modal avec animation */}
-              <TouchableOpacity style={styles.voirToutSearchBar} onPress={() => openSearchModal('filter')} activeOpacity={0.8}>
-                <View style={styles.voirToutSearchBarContent}>
-                  <Text style={styles.voirToutSearchTitle} numberOfLines={1}>
-                    {showAllSection.id === 'search-results' ? buildFilterTitle() : showAllSection.subtitle || showAllSection.title}
-                  </Text>
-                  <Text style={styles.voirToutSearchSubtitle} numberOfLines={1}>
-                    {showAllSection.id === 'search-results' ? buildFilterDetails() : 'Dates · Voyageurs'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={() => openSearchModal('filter')}>
-                <SlidersIcon size={18} color="#fcd34d" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.voirToutScroll}
-              contentContainerStyle={[styles.voirToutScrollContent, { paddingBottom: 120 + insets.bottom }]}
-              showsVerticalScrollIndicator={false}
-            >
-              {searchLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#fbbf24" />
-                  <Text style={styles.loadingText}>Recherche en cours...</Text>
-                </View>
-              ) : showAllSection.properties.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateEmoji}>🏠</Text>
-                  <Text style={styles.emptyStateTitle}>Aucun logement trouvé</Text>
-                  <Text style={styles.emptyStateText}>Essayez de modifier vos filtres pour trouver plus de logements</Text>
-                  <TouchableOpacity style={styles.emptyStateButton} onPress={() => { resetFilters(); setShowAllSection(null); }}>
-                    <Text style={styles.emptyStateButtonText}>Réinitialiser les filtres</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <>
-                  {showAllSection.properties.map((property) => {
-                    const displayPrice = getDisplayPrice(property);
-                    const isMixedPrice = !!property.secondaryPrice;
-                    const images = getPropertyImages(property);
-                    const currentIndex = getCarouselIndex(property.id);
-                    const totalPrice = formatTotalPrice(property);
-                    const nights = calculateNights();
-                    const isFav = favorites.has(property.id);
-
-                    // ✅ Qualité: Pressable scale + spacing premium
-                    return (
-                      <Pressable
-                        key={property.id}
-                        onPress={() => navigateToProperty(property.id)}
-                        style={({ pressed }) => [
-                          styles.voirToutCard,
-                          pressed && { transform: [{ scale: 0.985 }] },
-                        ]}
-                      >
-                        <View style={styles.voirToutImageContainer}>
-                          <ScrollView
-                            horizontal
-                            pagingEnabled
-                            showsHorizontalScrollIndicator={false}
-                            onMomentumScrollEnd={(e) => {
-                              const newIndex = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 32));
-                              if (newIndex !== currentIndex) {
-                                setCarouselIndexes((prev) => ({ ...prev, [property.id]: newIndex }));
-                              }
-                            }}
-                          >
-                            {images.map((img, i) => (
-                              <Image key={i} source={{ uri: img }} style={styles.voirToutImage} />
-                            ))}
-                          </ScrollView>
-
-                          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.3)']} style={styles.voirToutImageOverlay} />
-
-                          {property.isGuestFavorite ? (
-                            <View style={styles.voirToutBadgeCoup}>
-                              <Text style={styles.voirToutBadgeCoupText}>🏆 Coup de cœur voyageurs</Text>
-                            </View>
-                          ) : null}
-
-                          {/* ✅ Qualité: bouton favori premium (fond léger) */}
-                          <TouchableOpacity style={[styles.voirToutFavoriteBtn, styles.voirToutFavoriteBtnBg]} onPress={() => toggleFavorite(property.id)}>
-                            <HeartIcon size={26} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
-                          </TouchableOpacity>
-
-                          <View style={styles.voirToutDots}>
-                            {images.map((_, i) => (
-                              <View key={i} style={[styles.voirToutDot, i === currentIndex && styles.voirToutDotActive]} />
-                            ))}
-                          </View>
-                        </View>
-
-                        <View style={styles.voirToutInfo}>
-                          <View style={styles.voirToutInfoHeader}>
-                            <Text style={styles.voirToutTitle} numberOfLines={1}>
-                              {property.title}
-                            </Text>
-                            <View style={styles.voirToutRating}>
-                              <StarIcon size={14} color="#fbbf24" filled />
-                              <Text style={styles.voirToutRatingText}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
-                              <Text style={styles.voirToutReviews}>({property.reviewsCount})</Text>
-                            </View>
-                          </View>
-
-                          <Text style={styles.voirToutDescription} numberOfLines={1}>
-                            {property.bedrooms} ch. · {property.beds} lit{property.beds > 1 ? 's' : ''} · {property.bathrooms} sdb
-                          </Text>
-
-                          <Text style={styles.voirToutLocation}>{property.location}</Text>
-
-                          {searchArrivalDate && <Text style={styles.voirToutPeriod}>{formatPeriodShort()}</Text>}
-
-                          {totalPrice && nights > 0 ? (
-                            <Text style={styles.voirToutPrice}>
-                              <Text style={styles.voirToutPriceBold}>{totalPrice.total} FCFA</Text>
-                              <Text style={styles.voirToutPriceLabel}> {totalPrice.label}</Text>
-                            </Text>
-                          ) : (
-                            <Text style={styles.voirToutPrice}>
-                              <Text style={styles.voirToutPriceBold}>{formatPrice(displayPrice.price)} FCFA</Text>
-                              <Text style={styles.voirToutPriceLabel}> / {displayPrice.unit}</Text>
-                              {isMixedPrice && (
-                                <Text style={styles.voirToutPriceAlt}>
-                                  {' '}
-                                  (aussi en {displayPrice.unit === 'nuit' ? 'longue durée' : 'courte durée'})
-                                </Text>
-                              )}
-                            </Text>
-                          )}
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-
-                  <View style={styles.voirToutCounter}>
-                    <Text style={styles.voirToutCounterText}>
-                      {showAllSection.id === 'search-results' ? searchTotal : showAllSection.properties.length}{' '}
-                      logement{(showAllSection.id === 'search-results' ? searchTotal : showAllSection.properties.length) > 1 ? 's' : ''}
-                      {showAllSection.subtitle ? ` à ${showAllSection.subtitle}` : ''}
-                    </Text>
-                    <Text style={styles.voirToutCounterHint}>Explorez plus avec les filtres</Text>
-                  </View>
-                </>
-              )}
-            </ScrollView>
-          </View>
-        )}
-      </Modal>
-
-      {/* ===============================
-          MODAL RECHERCHE (web-like fade + slide + reset)
-      =============================== */}
-      <Modal visible={showSearchModal} transparent animationType="none" statusBarTranslucent>
+  // ===================================================================
+  // Contenu partagé du modal Filtres/Recherche
+  // Rendu à la fois au root (home) ET en nested modal (dans Voir tout)
+  // ===================================================================
+  const renderSearchModalInner = () => (
+    <>
         {/* ✅ Backdrop cliquable: ferme + reset (comportement web) */}
         <Pressable
           style={styles.searchModalBackdrop}
@@ -1574,7 +1160,7 @@ const SearchScreen: React.FC = () => {
               <Text style={styles.modalTitle}>
                 {searchModalMode === 'filter' ? 'Filtres' : 'Rechercher'}
               </Text>
-              <TouchableOpacity onPress={resetFilters}>
+              <TouchableOpacity onPress={resetFiltersSmart}>
                 <Text style={styles.modalClearBtn}>Effacer</Text>
               </TouchableOpacity>
             </View>
@@ -2158,6 +1744,515 @@ const SearchScreen: React.FC = () => {
             </View>
           </Animated.View>
         </KeyboardAvoidingView>
+    </>
+  );
+
+
+  const buildFilterTitle = () => {
+    const parts: string[] = [];
+    parts.push(searchCity || 'Toutes les villes');
+    if (searchPropertyTypes.length === 1) {
+      const typeLabel = propertyTypes.find((t) => t.value === searchPropertyTypes[0])?.label;
+      if (typeLabel) parts.push(typeLabel === 'Appartement' ? 'Appart.' : typeLabel);
+    } else if (searchPropertyTypes.length > 1) {
+      parts.push(`${searchPropertyTypes.length} types`);
+    }
+    if (searchLocationType) {
+      if (searchLocationType === 'short') parts.push('Courte durée');
+      else if (searchLocationType === 'long') parts.push('Longue durée');
+      else if (searchLocationType === 'both') parts.push('Toute durée');
+    }
+    return parts.join(' · ');
+  };
+
+  const buildFilterDetails = () => {
+    const parts: string[] = [];
+    if (searchArrivalDate) parts.push(formatPeriodShort() || '');
+    else parts.push('Dates flexibles');
+    parts.push(searchGuests > 0 ? `${searchGuests} voy.` : 'voy.');
+    if (searchBedrooms > 0) parts.push(`${searchBedrooms} ch.`);
+    return parts.join(' · ');
+  };
+
+  const performSearch = async () => {
+    closeSearchModal(false);
+    setSearchLoading(true);
+
+    const params: SearchPropertiesParams = {
+      limit: 50,
+      offset: 0,
+      sort: 'recommended',
+    };
+
+    if (searchCity) params.city = searchCity;
+    // NB: backend accepte 1 seul neighborhoodId pour l’instant.
+    // UI permet multi-select, on envoie le premier sélectionné.
+    if (searchNeighborhoodId) params.neighborhoodId = searchNeighborhoodId;
+
+    if (searchPropertyTypes.length === 1) params.propertyType = searchPropertyTypes[0];
+
+    if (searchLocationType === 'short') params.rentalType = 'short_term';
+    if (searchLocationType === 'long') params.rentalType = 'long_term';
+    // both => pas de filtre
+
+    if (searchGuests > 0) params.guests = searchGuests;
+    if (searchBedrooms > 0) params.bedrooms = searchBedrooms;
+    if (searchAmenities.length > 0) params.equipmentIds = searchAmenities;
+
+    // prix
+    if (searchLocationType === 'short') {
+      if (priceMinNight > PRICE_NIGHT_MIN) params.minPrice = priceMinNight;
+      if (priceMaxNight < PRICE_NIGHT_MAX) params.maxPrice = priceMaxNight;
+    }
+
+    if (searchLocationType === 'long') {
+      if (priceMinMonth > PRICE_MONTH_MIN) params.minPrice = priceMinMonth;
+      if (priceMaxMonth < PRICE_MONTH_MAX) params.maxPrice = priceMaxMonth;
+    }
+
+    if (searchLocationType === 'both') {
+      // important: on envoie les 2 ranges (Option B)
+      params.rentalType = 'both';
+
+      // nuit
+      if (priceMinNight > PRICE_NIGHT_MIN) params.minNightPrice = priceMinNight;
+      if (priceMaxNight < PRICE_NIGHT_MAX) params.maxNightPrice = priceMaxNight;
+
+      // mois
+      if (priceMinMonth > PRICE_MONTH_MIN) params.minMonthPrice = priceMinMonth;
+      if (priceMaxMonth < PRICE_MONTH_MAX) params.maxMonthPrice = priceMaxMonth;
+    }
+
+    try {
+      const data = await searchProperties(params);
+      const mapped: UiProperty[] = (data.items || []).map(mapCardToUi);
+
+      // sync favoris depuis résultats
+      const fav = new Set(favorites);
+      mapped.forEach((p) => (p.isFavorite ? fav.add(p.id) : fav.delete(p.id)));
+      setFavorites(fav);
+
+      setSearchTotal(data.total || mapped.length);
+
+      const searchSection: Section = {
+        id: 'search-results',
+        title: 'Résultats de recherche',
+        subtitle: buildFilterTitle(),
+        properties: mapped,
+        isConditional: true,
+      };
+      setShowAllSection(searchSection);
+    } catch (e) {
+      console.error('Erreur recherche:', e);
+      setSearchTotal(0);
+      setShowAllSection({
+        id: 'search-results',
+        title: 'Résultats de recherche',
+        subtitle: buildFilterTitle(),
+        properties: [],
+        isConditional: true,
+      });
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const renderPropertyCard = (property: UiProperty, isRecent: boolean) => {
+    const displayPrice = getDisplayPrice(property);
+    const cardWidth = isRecent ? CARD_WIDTH_RECENT : CARD_WIDTH_NORMAL;
+    const imageHeight = isRecent ? cardWidth : 144;
+    const isFav = favorites.has(property.id);
+
+    // ✅ Qualité: press feedback (web-like) => on passe en Pressable + scale léger
+    return (
+      <Pressable
+        key={property.id}
+        onPress={() => navigateToProperty(property.id)}
+        style={({ pressed }) => [
+          styles.propertyCard,
+          { width: cardWidth, transform: [{ scale: pressed ? 0.985 : 1 }] },
+        ]}
+      >
+        <View style={[styles.imageContainer, { height: imageHeight }]}>
+          <Image source={{ uri: property.image }} style={styles.propertyImage} />
+          <LinearGradient colors={['transparent', 'transparent', 'rgba(0,0,0,0.4)']} style={styles.imageOverlay} />
+
+          {property.isGuestFavorite && (
+            <View style={styles.guestFavoriteBadge}>
+              <Text style={styles.guestFavoriteBadgeText}>Coup de cœur</Text>
+            </View>
+          )}
+
+          {/* ✅ Qualité: bouton favori avec léger fond (hitbox + premium) */}
+          <TouchableOpacity
+            style={[styles.favoriteButton, styles.favoriteButtonBg]}
+            onPress={() => toggleFavorite(property.id)}
+            activeOpacity={0.8}
+          >
+            <HeartIcon size={20} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.propertyInfo}>
+          {isRecent ? (
+            <>
+              <Text style={styles.propertyTitle} numberOfLines={2}>
+                {property.title.includes('·') ? property.title.split('·')[1]?.trim() : property.title}
+              </Text>
+              <Text style={styles.propertyLocation}>{property.location}</Text>
+              <View style={styles.propertyMeta}>
+                <Text style={styles.propertyMetaText}>
+                  {property.beds} lit{property.beds > 1 ? 's' : ''}
+                </Text>
+                <Text style={styles.propertyMetaDot}>·</Text>
+                <StarIcon size={10} color="#fbbf24" filled />
+                <Text style={styles.propertyRating}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.propertyTitle} numberOfLines={2}>
+                {property.title}
+              </Text>
+              <Text style={styles.propertyLocation}>{property.location}</Text>
+              <View style={styles.propertyMeta}>
+                <Text style={styles.propertyPrice}>
+                  {formatPrice(displayPrice.price)} FCFA/{displayPrice.unit}
+                </Text>
+                <Text style={styles.propertyMetaDot}>·</Text>
+                <StarIcon size={10} color="#fbbf24" filled />
+                <Text style={styles.propertyRating}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
+              </View>
+            </>
+          )}
+        </View>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* ✅ Alignement maquette web: gradient unique VANDA (3 stops) */}
+      <LinearGradient
+        colors={VANDA_GRADIENT_COLORS as any}
+        locations={VANDA_GRADIENT_LOCATIONS as any}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <KongoPattern />
+
+      {/* ✅ Particules persistantes: on réutilise le même tableau `particles` */}
+      <View style={styles.particlesContainer}>
+        {particles.map((p) => (
+          <FloatingParticle key={p.id} {...p} />
+        ))}
+      </View>
+
+      <View style={[styles.content, { paddingTop: insets.top }]}>
+        {/* HEADER */}
+        <View style={styles.header}>
+          {/* ✅ Remplace setShowSearchModal(true) par openSearchModal() (animation web-like) */}
+          <TouchableOpacity style={styles.searchBar} onPress={() => openSearchModal('search')} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['rgba(120, 53, 15, 0.8)', 'rgba(127, 29, 29, 0.8)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.searchBarGradient}
+            >
+              <SearchIconGradient size={28} />
+              <View style={styles.searchBarText}>
+                <Text style={styles.searchBarTitle}>Rechercher un logement</Text>
+                <Text style={styles.searchBarSubtitle}>Destination · Dates · Voyageurs</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* SECTIONS */}
+        {loadingHome ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#fbbf24" />
+            <Text style={styles.loadingText}>Chargement des logements...</Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fbbf24" colors={['#fbbf24']} />
+            }
+          >
+            {sections.map((section) => (
+              <View key={section.id} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <Text style={styles.sectionTitle}>{section.title}</Text>
+                    {section.subtitle && <Text style={styles.sectionSubtitle}> · {section.subtitle}</Text>}
+                  </View>
+                  <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.7} onPress={() => {
+                    // ✅ Pré-remplir les filtres avec la ville de la section (home uniquement)
+                    // NB: search-results a isConditional=true et subtitle = buildFilterTitle() (pas une ville)
+                    const isHomeCitySection = !section.isConditional && !!section.subtitle;
+                    if (isHomeCitySection) {
+                      setSearchCity(section.subtitle!);
+                      setSearchCityInput('');
+                      setSearchNeighborhoodIds([]);
+                      setSearchNeighborhoodInput('');
+                    }
+                    setShowAllSection(section);
+                  }}>
+                    <Text style={styles.seeAllText}>Voir tout</Text>
+                    <ChevronRightIcon size={16} color="#fbbf24" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.propertiesList}>
+                  {section.properties.map((p) => renderPropertyCard(p, section.id === 'recent'))}
+                </ScrollView>
+              </View>
+            ))}
+
+            {/* DESTINATIONS POPULAIRES */}
+            <View style={styles.destinationsSection}>
+              <Text style={styles.destinationsTitle}>Destinations populaires</Text>
+              <View style={styles.destinationsGrid}>
+                {Object.entries(destinationImages).map(([name, image]) => (
+                  <TouchableOpacity
+                    key={name}
+                    style={styles.destinationCard}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      // ✅ UX maquette: en choisissant une destination, on ouvre le modal avec animation
+                      setSearchCity(name);
+                      setSearchCityInput('');
+                      // ✅ multi-quartiers => reset liste
+                      setSearchNeighborhoodIds([]);
+                      setSearchNeighborhoodInput('');
+                      openSearchModal('filter'); // ✅ tu arrives dans le “vrai” filtre avec la ville pré-sélectionnée
+                    }}
+                  >
+                    <Image source={{ uri: image }} style={styles.destinationImage} />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.destinationOverlay} />
+                    <View style={styles.destinationInfo}>
+                      <Text style={styles.destinationName}>{name}</Text>
+                      <Text style={styles.destinationCount}>
+                        {sections.find((s) => s.subtitle === name)?.properties.length || 0} logements
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+        )}
+      </View>
+
+      {/* ===============================
+          MODAL VOIR TOUT (aligné gradient + particules + cards premium)
+      =============================== */}
+      <Modal visible={showAllSection !== null} animationType="slide" presentationStyle="fullScreen">
+        {showAllSection && (
+          <View style={styles.voirToutContainer}>
+            {/* ✅ Alignement maquette web: même gradient que Home/Search */}
+            <LinearGradient
+              colors={VANDA_GRADIENT_COLORS as any}
+              locations={VANDA_GRADIENT_LOCATIONS as any}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <KongoPattern />
+
+            {/* ✅ Particules persistantes réutilisées (même tableau => pas de téléportation) */}
+            <View style={styles.particlesContainer}>
+              {particles.map((p) => (
+                <FloatingParticle key={`all-${p.id}`} {...p} />
+              ))}
+            </View>
+
+            <View style={[styles.voirToutHeader, { paddingTop: insets.top + 8 }]}>
+              <TouchableOpacity
+                style={styles.voirToutBackBtn}
+                onPress={() => {
+                  // Si le modal filtres est ouvert, on le ferme d'abord (sans reset)
+                  if (showSearchModal) {
+                    closeSearchModal(false);
+                    return;
+                  }
+                  // Quitter Voir tout → reset filtres seulement pour search-results
+                  const wasSearchResults = showAllSection?.id === 'search-results';
+                  setShowAllSection(null);
+                  if (wasSearchResults) resetFilters();
+                }}
+              >
+                <ArrowLeftIcon size={20} color="#fcd34d" />
+              </TouchableOpacity>
+
+              {/* ✅ Ouvre le modal avec animation */}
+              <TouchableOpacity style={styles.voirToutSearchBar} onPress={() => openSearchModal('filter')} activeOpacity={0.8}>
+                <View style={styles.voirToutSearchBarContent}>
+                  <Text style={styles.voirToutSearchTitle} numberOfLines={1}>
+                    {showAllSection.id === 'search-results' ? buildFilterTitle() : showAllSection.subtitle || showAllSection.title}
+                  </Text>
+                  <Text style={styles.voirToutSearchSubtitle} numberOfLines={1}>
+                    {showAllSection.id === 'search-results' ? buildFilterDetails() : 'Dates · Voyageurs'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.voirToutFilterBtn} onPress={() => openSearchModal('filter')}>
+                <SlidersIcon size={18} color="#fcd34d" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.voirToutScroll}
+              contentContainerStyle={[styles.voirToutScrollContent, { paddingBottom: 120 + insets.bottom }]}
+              showsVerticalScrollIndicator={false}
+            >
+              {searchLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#fbbf24" />
+                  <Text style={styles.loadingText}>Recherche en cours...</Text>
+                </View>
+              ) : showAllSection.properties.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateEmoji}>🏠</Text>
+                  <Text style={styles.emptyStateTitle}>Aucun logement trouvé</Text>
+                  <Text style={styles.emptyStateText}>Essayez de modifier vos filtres pour trouver plus de logements</Text>
+                  <TouchableOpacity style={styles.emptyStateButton} onPress={() => { resetFiltersSmart(); setShowAllSection(null); }}>
+                    <Text style={styles.emptyStateButtonText}>Réinitialiser les filtres</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  {showAllSection.properties.map((property) => {
+                    const displayPrice = getDisplayPrice(property);
+                    const isMixedPrice = !!property.secondaryPrice;
+                    const images = getPropertyImages(property);
+                    const currentIndex = getCarouselIndex(property.id);
+                    const totalPrice = formatTotalPrice(property);
+                    const nights = calculateNights();
+                    const isFav = favorites.has(property.id);
+
+                    // ✅ Qualité: Pressable scale + spacing premium
+                    return (
+                      <Pressable
+                        key={property.id}
+                        onPress={() => navigateToProperty(property.id)}
+                        style={({ pressed }) => [
+                          styles.voirToutCard,
+                          pressed && { transform: [{ scale: 0.985 }] },
+                        ]}
+                      >
+                        <View style={styles.voirToutImageContainer}>
+                          <ScrollView
+                            horizontal
+                            pagingEnabled
+                            showsHorizontalScrollIndicator={false}
+                            onMomentumScrollEnd={(e) => {
+                              const newIndex = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 32));
+                              if (newIndex !== currentIndex) {
+                                setCarouselIndexes((prev) => ({ ...prev, [property.id]: newIndex }));
+                              }
+                            }}
+                          >
+                            {images.map((img, i) => (
+                              <Image key={i} source={{ uri: img }} style={styles.voirToutImage} />
+                            ))}
+                          </ScrollView>
+
+                          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.3)']} style={styles.voirToutImageOverlay} />
+
+                          {property.isGuestFavorite ? (
+                            <View style={styles.voirToutBadgeCoup}>
+                              <Text style={styles.voirToutBadgeCoupText}>🏆 Coup de cœur voyageurs</Text>
+                            </View>
+                          ) : null}
+
+                          {/* ✅ Qualité: bouton favori premium (fond léger) */}
+                          <TouchableOpacity style={[styles.voirToutFavoriteBtn, styles.voirToutFavoriteBtnBg]} onPress={() => toggleFavorite(property.id)}>
+                            <HeartIcon size={26} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
+                          </TouchableOpacity>
+
+                          <View style={styles.voirToutDots}>
+                            {images.map((_, i) => (
+                              <View key={i} style={[styles.voirToutDot, i === currentIndex && styles.voirToutDotActive]} />
+                            ))}
+                          </View>
+                        </View>
+
+                        <View style={styles.voirToutInfo}>
+                          <View style={styles.voirToutInfoHeader}>
+                            <Text style={styles.voirToutTitle} numberOfLines={1}>
+                              {property.title}
+                            </Text>
+                            <View style={styles.voirToutRating}>
+                              <StarIcon size={14} color="#fbbf24" filled />
+                              <Text style={styles.voirToutRatingText}>{property.rating ? property.rating.toFixed(1) : 'Nouveau'}</Text>
+                              <Text style={styles.voirToutReviews}>({property.reviewsCount})</Text>
+                            </View>
+                          </View>
+
+                          <Text style={styles.voirToutDescription} numberOfLines={1}>
+                            {property.bedrooms} ch. · {property.beds} lit{property.beds > 1 ? 's' : ''} · {property.bathrooms} sdb
+                          </Text>
+
+                          <Text style={styles.voirToutLocation}>{property.location}</Text>
+
+                          {searchArrivalDate && <Text style={styles.voirToutPeriod}>{formatPeriodShort()}</Text>}
+
+                          {totalPrice && nights > 0 ? (
+                            <Text style={styles.voirToutPrice}>
+                              <Text style={styles.voirToutPriceBold}>{totalPrice.total} FCFA</Text>
+                              <Text style={styles.voirToutPriceLabel}> {totalPrice.label}</Text>
+                            </Text>
+                          ) : (
+                            <Text style={styles.voirToutPrice}>
+                              <Text style={styles.voirToutPriceBold}>{formatPrice(displayPrice.price)} FCFA</Text>
+                              <Text style={styles.voirToutPriceLabel}> / {displayPrice.unit}</Text>
+                              {isMixedPrice && (
+                                <Text style={styles.voirToutPriceAlt}>
+                                  {' '}
+                                  (aussi en {displayPrice.unit === 'nuit' ? 'longue durée' : 'courte durée'})
+                                </Text>
+                              )}
+                            </Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+
+                  <View style={styles.voirToutCounter}>
+                    <Text style={styles.voirToutCounterText}>
+                      {showAllSection.id === 'search-results' ? searchTotal : showAllSection.properties.length}{' '}
+                      logement{(showAllSection.id === 'search-results' ? searchTotal : showAllSection.properties.length) > 1 ? 's' : ''}
+                      {showAllSection.subtitle ? ` à ${showAllSection.subtitle}` : ''}
+                    </Text>
+                    <Text style={styles.voirToutCounterHint}>Explorez plus avec les filtres</Text>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+          {/* ===============================
+              MODAL RECHERCHE – NESTED (quand Voir tout est OUVERT)
+              Rendu DANS le modal Voir tout pour apparaître AU-DESSUS
+          =============================== */}
+          <Modal visible={showSearchModal} transparent animationType="none" statusBarTranslucent>
+            {renderSearchModalInner()}
+          </Modal>
+
+      </Modal>
+
+      {/* ===============================
+          MODAL RECHERCHE – ROOT (quand Voir tout est FERMÉ)
+      =============================== */}
+      <Modal visible={showSearchModal && !showAllSection} transparent animationType="none" statusBarTranslucent>
+        {renderSearchModalInner()}
       </Modal>
     </View>
   );

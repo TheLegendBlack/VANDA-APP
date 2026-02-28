@@ -165,10 +165,15 @@ export interface SearchPropertiesParams {
   q?: string;
   city?: string;
   neighborhoodId?: string;
-  rentalType?: 'short_term' | 'long_term';
+  rentalType?: 'short_term' | 'long_term' | 'both';
   propertyType?: string;
   minPrice?: number;
   maxPrice?: number;
+  // Option B (both): 2 fourchettes distinctes
+  minNightPrice?: number;
+  maxNightPrice?: number;
+  minMonthPrice?: number;
+  maxMonthPrice?: number;
   guests?: number;
   bedrooms?: number;
   bathrooms?: number;
@@ -249,6 +254,15 @@ export async function searchProperties(
     url.searchParams.set('minPrice', String(params.minPrice));
   if (params?.maxPrice !== undefined)
     url.searchParams.set('maxPrice', String(params.maxPrice));
+  // Option B (both): ranges séparées nuit/mois
+  if (params?.minNightPrice !== undefined)
+    url.searchParams.set('minNightPrice', String(params.minNightPrice));
+  if (params?.maxNightPrice !== undefined)
+    url.searchParams.set('maxNightPrice', String(params.maxNightPrice));
+  if (params?.minMonthPrice !== undefined)
+    url.searchParams.set('minMonthPrice', String(params.minMonthPrice));
+  if (params?.maxMonthPrice !== undefined)
+    url.searchParams.set('maxMonthPrice', String(params.maxMonthPrice));  
   if (params?.guests) url.searchParams.set('guests', String(params.guests));
   if (params?.bedrooms)
     url.searchParams.set('bedrooms', String(params.bedrooms));
