@@ -762,11 +762,209 @@ const SearchScreen: React.FC = () => {
     return anyEq.category ?? '';
   };
 
-  const getDisplayPrice = (property: UiProperty) => {
-    if (property.secondaryPrice && showSecondaryPrice) {
-      return { price: property.secondaryPrice, unit: property.secondaryPriceUnit! };
+  // ===== Système d'affichage des prix (unifié cards + Voir tout) =====
+  type DisplayUnit = 'nuit' | 'mois';
+  type PriceDisplay = {
+    amountText: string;
+    labelText: string;
+    isTotal: boolean;
+    canAlternate: boolean;
+    primaryUnit: DisplayUnit;
+    secondary?: {
+      amountText: string;
+      labelText: string;
+      unit: DisplayUnit;
+    };
+  };
+
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+  const diffDaysCeil = (start: Date, end: Date) => {
+    const days = Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY);
+    return Math.max(0, days);
+  };
+
+  const computePriceDisplay = (property: UiProperty): PriceDisplay => {
+    const hasArrival = !!searchArrivalDate;
+    const hasDeparture = !!searchDepartureDate;
+    const isBothProperty = !!property.secondaryPrice && !!property.secondaryPriceUnit;
+    const stayDays = hasArrival && hasDeparture ? diffDaysCeil(searchArrivalDate!, searchDepartureDate!) : 0;
+    const stayNights = stayDays;
+
+    // ✅ Flags du backend (shortOk/longOk) — fallback true si non fourni (home sections, pas de recherche)
+    const shortOk = property.raw?.availability?.shortOk ?? true;
+    const longOk = property.raw?.availability?.longOk ?? true;
+
+    // ---- PAS DE DATES -> prix unitaires + alternance both (seulement si les deux variantes OK)
+    if (!hasArrival) {
+      const unit: DisplayUnit = property.priceUnit;
+      const canAlternate = isBothProperty && shortOk && longOk;
+      const base: PriceDisplay = {
+        amountText: `${formatPrice(property.price)} FCFA`,
+        labelText: `/ ${unit}`,
+        isTotal: false,
+        canAlternate,
+        primaryUnit: unit,
+      };
+      if (canAlternate) {
+        base.secondary = {
+          amountText: `${formatPrice(property.secondaryPrice!)} FCFA`,
+          labelText: `/ ${property.secondaryPriceUnit!}`,
+          unit: property.secondaryPriceUnit!,
+        };
+      }
+      return base;
     }
-    return { price: property.price, unit: property.priceUnit };
+
+    // ---- ARRIVÉE SEULE (pas de total)
+    if (hasArrival && !hasDeparture) {
+      // long forcé par l'utilisateur
+      if (searchLocationType === 'long') {
+        // sécurité : si longOk=false mais shortOk=true, bascule en nuit
+        if (!longOk && shortOk) {
+          const nightPrice =
+            property.priceUnit === 'nuit' ? property.price :
+            (property.secondaryPriceUnit === 'nuit' ? property.secondaryPrice! : property.price);
+          return { amountText: `${formatPrice(nightPrice)} FCFA`, labelText: `/ nuit`, isTotal: false, canAlternate: false, primaryUnit: 'nuit' };
+        }
+        const monthPrice =
+          property.priceUnit === 'mois' ? property.price :
+          (property.secondaryPriceUnit === 'mois' ? property.secondaryPrice! : property.price);
+        return {
+          amountText: `${formatPrice(monthPrice)} FCFA`,
+          labelText: `/ mois`,
+          isTotal: false,
+          canAlternate: false,
+          primaryUnit: 'mois',
+        };
+      }
+
+      // short forcé
+      if (searchLocationType === 'short') {
+        const nightPrice =
+          property.priceUnit === 'nuit' ? property.price :
+          (property.secondaryPriceUnit === 'nuit' ? property.secondaryPrice! : property.price);
+        return {
+          amountText: `${formatPrice(nightPrice)} FCFA`,
+          labelText: `/ nuit`,
+          isTotal: false,
+          canAlternate: false,
+          primaryUnit: 'nuit',
+        };
+      }
+
+      // BOTH : si longOk=false => uniquement variante courte, pas d'alternance
+      if (!longOk || !isBothProperty) {
+        const nightPrice =
+          property.priceUnit === 'nuit' ? property.price :
+          (property.secondaryPriceUnit === 'nuit' ? property.secondaryPrice! : property.price);
+        return {
+          amountText: `${formatPrice(nightPrice)} FCFA`,
+          labelText: `/ nuit`,
+          isTotal: false,
+          canAlternate: false,
+          primaryUnit: 'nuit',
+        };
+      }
+
+      // BOTH + longOk=true => alternance /nuit ↔ /mois (prix unitaires)
+      const nightPrice =
+        property.priceUnit === 'nuit' ? property.price : property.secondaryPrice!;
+      const monthPrice =
+        property.priceUnit === 'mois' ? property.price : property.secondaryPrice!;
+      return {
+        amountText: `${formatPrice(nightPrice)} FCFA`,
+        labelText: `/ nuit`,
+        isTotal: false,
+        canAlternate: true,
+        primaryUnit: 'nuit',
+        secondary: {
+          amountText: `${formatPrice(monthPrice)} FCFA`,
+          labelText: `/ mois`,
+          unit: 'mois',
+        },
+      };
+    }
+
+    // ---- ARRIVÉE + DÉPART (TOTAL)
+    const totalShort = (() => {
+      const nightPrice =
+        property.priceUnit === 'nuit' ? property.price :
+        (property.secondaryPriceUnit === 'nuit' ? property.secondaryPrice! : null);
+      if (nightPrice == null) return null;
+      const total = nightPrice * stayNights;
+      return {
+        amountText: `${formatPrice(total)} FCFA`,
+        labelText: `pour ${stayNights} nuit${stayNights > 1 ? 's' : ''}`,
+        unit: 'nuit' as const,
+      };
+    })();
+
+    const totalLong = (() => {
+      const monthPrice =
+        property.priceUnit === 'mois' ? property.price :
+        (property.secondaryPriceUnit === 'mois' ? property.secondaryPrice! : null);
+      if (monthPrice == null) return null;
+      const months = Math.ceil(stayDays / 30);
+      const total = monthPrice * months;
+      return {
+        amountText: `${formatPrice(total)} FCFA`,
+        labelText: `pour ${months} mois (${stayDays} jours)`,
+        unit: 'mois' as const,
+      };
+    })();
+
+    if (searchLocationType === 'short' && totalShort) {
+      return { amountText: totalShort.amountText, labelText: totalShort.labelText, isTotal: true, canAlternate: false, primaryUnit: 'nuit' };
+    }
+    if (searchLocationType === 'long' && totalLong) {
+      return { amountText: totalLong.amountText, labelText: totalLong.labelText, isTotal: true, canAlternate: false, primaryUnit: 'mois' };
+    }
+
+    // both (ou non spécifié) : < 24 jours => short uniquement
+    if (stayDays < 24) {
+      if (totalShort) {
+        return { amountText: totalShort.amountText, labelText: totalShort.labelText, isTotal: true, canAlternate: false, primaryUnit: 'nuit' };
+      }
+    }
+
+    // >= 24 jours + both property => alternance totaux UNIQUEMENT si longOk
+    if (isBothProperty && totalShort && totalLong && longOk) {
+      return {
+        amountText: totalShort.amountText,
+        labelText: totalShort.labelText,
+        isTotal: true,
+        canAlternate: true,
+        primaryUnit: 'nuit',
+        secondary: { amountText: totalLong.amountText, labelText: totalLong.labelText, unit: 'mois' },
+      };
+    }
+
+    // fallback: un seul total dispo
+    if (totalShort) {
+      return { amountText: totalShort.amountText, labelText: totalShort.labelText, isTotal: true, canAlternate: false, primaryUnit: 'nuit' };
+    }
+    if (totalLong) {
+      return { amountText: totalLong.amountText, labelText: totalLong.labelText, isTotal: true, canAlternate: false, primaryUnit: 'mois' };
+    }
+
+    // dernier fallback: prix unitaire
+    return {
+      amountText: `${formatPrice(property.price)} FCFA`,
+      labelText: `/ ${property.priceUnit}`,
+      isTotal: false,
+      canAlternate: false,
+      primaryUnit: property.priceUnit,
+    };
+  };
+
+  // Helper final: renvoie le texte à afficher (gère alternance via showSecondaryPrice)
+  const getDisplayedPriceForCard = (property: UiProperty) => {
+    const disp = computePriceDisplay(property);
+    if (disp.canAlternate && disp.secondary && showSecondaryPrice) {
+      return { amountText: disp.secondary.amountText, labelText: disp.secondary.labelText, isTotal: disp.isTotal };
+    }
+    return { amountText: disp.amountText, labelText: disp.labelText, isTotal: disp.isTotal };
   };
 
   const getPropertyImages = (property: UiProperty) => property.images?.length ? property.images : [property.image];
@@ -1076,12 +1274,6 @@ const SearchScreen: React.FC = () => {
     setSearchDepartureDate(null);
   };
 
-  const calculateNights = () => {
-    if (!searchArrivalDate || !searchDepartureDate) return 0;
-    const diffTime = Math.abs(searchDepartureDate.getTime() - searchArrivalDate.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
   const formatPeriodShort = () => {
     if (!searchArrivalDate) return null;
     const arrDay = searchArrivalDate.getDate();
@@ -1093,22 +1285,6 @@ const SearchScreen: React.FC = () => {
       return `${arrDay} ${arrMonth} - ${depDay} ${depMonth}`;
     }
     return `Dès le ${arrDay} ${arrMonth}`;
-  };
-
-  const formatTotalPrice = (property: UiProperty) => {
-    const nights = calculateNights();
-    if (nights > 0 && property.priceUnit === 'nuit') {
-      const total = property.price * nights;
-      return { total: formatPrice(total), label: `pour ${nights} nuit${nights > 1 ? 's' : ''}` };
-    } else if (nights >= 30 && property.priceUnit === 'mois') {
-      const months = Math.ceil(nights / 30);
-      const total = property.price * months;
-      return { total: formatPrice(total), label: `pour ${months} mois (${nights} jours)` };
-    } else if (nights > 0 && property.secondaryPrice && property.secondaryPriceUnit === 'nuit') {
-      const total = property.secondaryPrice * nights;
-      return { total: formatPrice(total), label: `pour ${nights} nuit${nights > 1 ? 's' : ''}` };
-    }
-    return null;
   };
 
   // ===================================================================
@@ -1774,6 +1950,13 @@ const SearchScreen: React.FC = () => {
     return parts.join(' · ');
   };
 
+  const toYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  
   const performSearch = async () => {
     closeSearchModal(false);
     setSearchLoading(true);
@@ -1788,16 +1971,21 @@ const SearchScreen: React.FC = () => {
     // NB: backend accepte 1 seul neighborhoodId pour l’instant.
     // UI permet multi-select, on envoie le premier sélectionné.
     if (searchNeighborhoodId) params.neighborhoodId = searchNeighborhoodId;
-
     if (searchPropertyTypes.length === 1) params.propertyType = searchPropertyTypes[0];
 
     if (searchLocationType === 'short') params.rentalType = 'short_term';
     if (searchLocationType === 'long') params.rentalType = 'long_term';
-    // both => pas de filtre
+    if (searchLocationType === 'both') params.rentalType = 'both';
 
     if (searchGuests > 0) params.guests = searchGuests;
     if (searchBedrooms > 0) params.bedrooms = searchBedrooms;
     if (searchAmenities.length > 0) params.equipmentIds = searchAmenities;
+
+    // ✅ dates -> checkInDate/checkOutDate
+    // - si arrivée seule: on envoie checkInDate uniquement
+    // - si arrivée + départ: on envoie les deux
+    if (searchArrivalDate) params.checkInDate = toYMD(searchArrivalDate);
+    if (searchDepartureDate) params.checkOutDate = toYMD(searchDepartureDate);
 
     // prix
     if (searchLocationType === 'short') {
@@ -1858,7 +2046,7 @@ const SearchScreen: React.FC = () => {
   };
 
   const renderPropertyCard = (property: UiProperty, isRecent: boolean) => {
-    const displayPrice = getDisplayPrice(property);
+    const displayed = getDisplayedPriceForCard(property);
     const cardWidth = isRecent ? CARD_WIDTH_RECENT : CARD_WIDTH_NORMAL;
     const imageHeight = isRecent ? cardWidth : 144;
     const isFav = favorites.has(property.id);
@@ -1917,7 +2105,7 @@ const SearchScreen: React.FC = () => {
               <Text style={styles.propertyLocation}>{property.location}</Text>
               <View style={styles.propertyMeta}>
                 <Text style={styles.propertyPrice}>
-                  {formatPrice(displayPrice.price)} FCFA/{displayPrice.unit}
+                  {displayed.amountText} {displayed.labelText}
                 </Text>
                 <Text style={styles.propertyMetaDot}>·</Text>
                 <StarIcon size={10} color="#fbbf24" filled />
@@ -2127,12 +2315,9 @@ const SearchScreen: React.FC = () => {
               ) : (
                 <>
                   {showAllSection.properties.map((property) => {
-                    const displayPrice = getDisplayPrice(property);
-                    const isMixedPrice = !!property.secondaryPrice;
+                    const displayed = getDisplayedPriceForCard(property);
                     const images = getPropertyImages(property);
                     const currentIndex = getCarouselIndex(property.id);
-                    const totalPrice = formatTotalPrice(property);
-                    const nights = calculateNights();
                     const isFav = favorites.has(property.id);
 
                     // ✅ Qualité: Pressable scale + spacing premium
@@ -2202,23 +2387,10 @@ const SearchScreen: React.FC = () => {
 
                           {searchArrivalDate && <Text style={styles.voirToutPeriod}>{formatPeriodShort()}</Text>}
 
-                          {totalPrice && nights > 0 ? (
-                            <Text style={styles.voirToutPrice}>
-                              <Text style={styles.voirToutPriceBold}>{totalPrice.total} FCFA</Text>
-                              <Text style={styles.voirToutPriceLabel}> {totalPrice.label}</Text>
-                            </Text>
-                          ) : (
-                            <Text style={styles.voirToutPrice}>
-                              <Text style={styles.voirToutPriceBold}>{formatPrice(displayPrice.price)} FCFA</Text>
-                              <Text style={styles.voirToutPriceLabel}> / {displayPrice.unit}</Text>
-                              {isMixedPrice && (
-                                <Text style={styles.voirToutPriceAlt}>
-                                  {' '}
-                                  (aussi en {displayPrice.unit === 'nuit' ? 'longue durée' : 'courte durée'})
-                                </Text>
-                              )}
-                            </Text>
-                          )}
+                          <Text style={styles.voirToutPrice}>
+                            <Text style={styles.voirToutPriceBold}>{displayed.amountText}</Text>
+                            <Text style={styles.voirToutPriceLabel}> {displayed.labelText}</Text>
+                          </Text>
                         </View>
                       </Pressable>
                     );

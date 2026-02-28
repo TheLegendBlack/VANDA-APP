@@ -86,6 +86,12 @@ export interface PropertyCardDto {
     startsAt: string | null;
     endsAt: string | null;
   };
+
+  // ✅ flags donnés par /properties/search pour gérer l'UX both (surtout arrivée seule)
+  availability?: {
+    shortOk: boolean;
+    longOk: boolean;
+  };
 }
 
 // DTO retourné par GET /properties (liste simple)
@@ -174,6 +180,8 @@ export interface SearchPropertiesParams {
   maxNightPrice?: number;
   minMonthPrice?: number;
   maxMonthPrice?: number;
+  checkInDate?: string;   // 'YYYY-MM-DD'
+  checkOutDate?: string;  // 'YYYY-MM-DD'
   guests?: number;
   bedrooms?: number;
   bathrooms?: number;
@@ -262,7 +270,9 @@ export async function searchProperties(
   if (params?.minMonthPrice !== undefined)
     url.searchParams.set('minMonthPrice', String(params.minMonthPrice));
   if (params?.maxMonthPrice !== undefined)
-    url.searchParams.set('maxMonthPrice', String(params.maxMonthPrice));  
+    url.searchParams.set('maxMonthPrice', String(params.maxMonthPrice));
+  if (params?.checkInDate) url.searchParams.set('checkInDate', params.checkInDate);
+  if (params?.checkOutDate) url.searchParams.set('checkOutDate', params.checkOutDate);  
   if (params?.guests) url.searchParams.set('guests', String(params.guests));
   if (params?.bedrooms)
     url.searchParams.set('bedrooms', String(params.bedrooms));
