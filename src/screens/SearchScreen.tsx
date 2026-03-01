@@ -1,5 +1,5 @@
 // src/screens/SearchScreen.tsx
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   KeyboardAvoidingView,
   Easing,
   PanResponder,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
@@ -33,7 +34,7 @@ import Svg, {
   Ellipse,
 } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 
 // Backend API
@@ -656,6 +657,7 @@ function mapCardToUi(p: PropertyCardDto): UiProperty {
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuth();
 
   // UI / data
@@ -701,6 +703,12 @@ const SearchScreen: React.FC = () => {
   const [searchTotal, setSearchTotal] = useState(0);
   const searchModalOpacity = useRef(new Animated.Value(0)).current;
   const searchModalTranslateY = useRef(new Animated.Value(32)).current;
+
+  // ✅ Navigation depuis Voir Tout : sauvegarde/restauration du modal
+  const savedVoirToutRef = useRef<Section | null>(null);
+  const [voirToutAnimType, setVoirToutAnimType] = useState<'slide' | 'none'>('slide');
+  // Overlay opaque pour masquer le flash de la page principale pendant la transition
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setShowSecondaryPrice((prev) => !prev), 7000);
@@ -1123,10 +1131,65 @@ const SearchScreen: React.FC = () => {
     }
   };
 
-  // ===== Navigation
-  const navigateToProperty = (id: string) => {
-    router.push(`/property/${id}`);
-  };
+  // ===== Navigation (fix anti-flash)
+  // ✅ requestAnimationFrame garantit que l'overlay est rendu AVANT de fermer le modal
+  // ✅ InteractionManager.runAfterInteractions pour le cleanup (pas de timeout arbitraire)
+  const pendingNavRef = useRef<string | null>(null);
+
+  const navigateToProperty = useCallback(
+    (id: string) => {
+      if (showAllSection) {
+        savedVoirToutRef.current = showAllSection;
+        pendingNavRef.current = id;
+
+        // 1) Overlay opaque immédiatement
+        setIsTransitioning(true);
+
+        // 2) Attendre 1 frame pour que l'overlay soit réellement affiché à l'écran
+        requestAnimationFrame(() => {
+          // 3) Fermer le modal sans animation visible
+          setVoirToutAnimType('none');
+          setShowAllSection(null);
+
+          // 4) Naviguer immédiatement (pas de setTimeout)
+          const targetId = pendingNavRef.current;
+          pendingNavRef.current = null;
+          if (targetId) {
+            router.push({ pathname: '/property/[id]', params: { id: targetId } });
+          }
+        });
+
+        return;
+      }
+
+      // Depuis la page principale → navigation directe, pas de sauvegarde
+      savedVoirToutRef.current = null;
+      router.push({ pathname: '/property/[id]', params: { id } });
+    },
+    [showAllSection, router]
+  );
+
+  // ✅ Au retour sur cet écran, restaurer le modal Voir Tout si sauvegardé
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (savedVoirToutRef.current) {
+        // Restaurer sans animation (instantané)
+        setVoirToutAnimType('none');
+        setShowAllSection(savedVoirToutRef.current);
+        savedVoirToutRef.current = null;
+
+        // Cleanup après que toutes les animations/transitions sont finies
+        InteractionManager.runAfterInteractions(() => {
+          setIsTransitioning(false);
+          setVoirToutAnimType('slide');
+        });
+      } else {
+        // Cas normal (retour depuis une annonce cliquée sur la page principale)
+        setIsTransitioning(false);
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // ===== Filtres UI
   const handleCitySelect = (city: string) => {
@@ -2029,10 +2092,12 @@ const SearchScreen: React.FC = () => {
         properties: mapped,
         isConditional: true,
       };
+      setVoirToutAnimType('slide');
       setShowAllSection(searchSection);
     } catch (e) {
       console.error('Erreur recherche:', e);
       setSearchTotal(0);
+      setVoirToutAnimType('slide');
       setShowAllSection({
         id: 'search-results',
         title: 'Résultats de recherche',
@@ -2189,6 +2254,7 @@ const SearchScreen: React.FC = () => {
                       setSearchNeighborhoodIds([]);
                       setSearchNeighborhoodInput('');
                     }
+                    setVoirToutAnimType('slide');
                     setShowAllSection(section);
                   }}>
                     <Text style={styles.seeAllText}>Voir tout</Text>
@@ -2237,10 +2303,22 @@ const SearchScreen: React.FC = () => {
         )}
       </View>
 
+      {/* ✅ Overlay de transition : masque la page principale pendant
+          la fermeture du modal Voir Tout et l'ouverture de la page détail */}
+      {isTransitioning && (
+        <View style={[StyleSheet.absoluteFillObject, { zIndex: 9999 }]} pointerEvents="none">
+          <LinearGradient
+            colors={VANDA_GRADIENT_COLORS as any}
+            locations={VANDA_GRADIENT_LOCATIONS as any}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </View>
+      )}
+
       {/* ===============================
           MODAL VOIR TOUT (aligné gradient + particules + cards premium)
       =============================== */}
-      <Modal visible={showAllSection !== null} animationType="slide" presentationStyle="fullScreen">
+      <Modal visible={showAllSection !== null} animationType={voirToutAnimType} presentationStyle="fullScreen">
         {showAllSection && (
           <View style={styles.voirToutContainer}>
             {/* ✅ Alignement maquette web: même gradient que Home/Search */}
@@ -2267,6 +2345,9 @@ const SearchScreen: React.FC = () => {
                     closeSearchModal(false);
                     return;
                   }
+                  // ✅ Fermeture manuelle: animation slide normale, pas de sauvegarde
+                  savedVoirToutRef.current = null;
+                  setVoirToutAnimType('slide');
                   // Quitter Voir tout → reset filtres seulement pour search-results
                   const wasSearchResults = showAllSection?.id === 'search-results';
                   setShowAllSection(null);
@@ -2308,7 +2389,7 @@ const SearchScreen: React.FC = () => {
                   <Text style={styles.emptyStateEmoji}>🏠</Text>
                   <Text style={styles.emptyStateTitle}>Aucun logement trouvé</Text>
                   <Text style={styles.emptyStateText}>Essayez de modifier vos filtres pour trouver plus de logements</Text>
-                  <TouchableOpacity style={styles.emptyStateButton} onPress={() => { resetFiltersSmart(); setShowAllSection(null); }}>
+                  <TouchableOpacity style={styles.emptyStateButton} onPress={() => { savedVoirToutRef.current = null; setVoirToutAnimType('slide'); resetFiltersSmart(); setShowAllSection(null); }}>
                     <Text style={styles.emptyStateButtonText}>Réinitialiser les filtres</Text>
                   </TouchableOpacity>
                 </View>
@@ -2320,15 +2401,11 @@ const SearchScreen: React.FC = () => {
                     const currentIndex = getCarouselIndex(property.id);
                     const isFav = favorites.has(property.id);
 
-                    // ✅ Qualité: Pressable scale + spacing premium
+                    // ✅ Fix: View au lieu de Pressable pour ne pas bloquer le swipe images
                     return (
-                      <Pressable
+                      <View
                         key={property.id}
-                        onPress={() => navigateToProperty(property.id)}
-                        style={({ pressed }) => [
-                          styles.voirToutCard,
-                          pressed && { transform: [{ scale: 0.985 }] },
-                        ]}
+                        style={styles.voirToutCard}
                       >
                         <View style={styles.voirToutImageContainer}>
                           <ScrollView
@@ -2343,11 +2420,15 @@ const SearchScreen: React.FC = () => {
                             }}
                           >
                             {images.map((img, i) => (
-                              <Image key={i} source={{ uri: img }} style={styles.voirToutImage} />
+                              // ✅ Chaque image est individuellement tappable
+                              // Le ScrollView gère le swipe, Pressable gère le tap
+                              <Pressable key={i} onPress={() => navigateToProperty(property.id)}>
+                                <Image source={{ uri: img }} style={styles.voirToutImage} />
+                              </Pressable>
                             ))}
                           </ScrollView>
 
-                          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.3)']} style={styles.voirToutImageOverlay} />
+                          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.3)']} style={[styles.voirToutImageOverlay, { pointerEvents: 'none' }]} />
 
                           {property.isGuestFavorite ? (
                             <View style={styles.voirToutBadgeCoup}>
@@ -2360,14 +2441,21 @@ const SearchScreen: React.FC = () => {
                             <HeartIcon size={26} color={isFav ? '#fbbf24' : '#ffffff'} filled={isFav} />
                           </TouchableOpacity>
 
-                          <View style={styles.voirToutDots}>
+                          <View style={[styles.voirToutDots, { pointerEvents: 'none' }]}>
                             {images.map((_, i) => (
                               <View key={i} style={[styles.voirToutDot, i === currentIndex && styles.voirToutDotActive]} />
                             ))}
                           </View>
                         </View>
 
-                        <View style={styles.voirToutInfo}>
+                        {/* ✅ Zone info tappable séparément */}
+                        <Pressable
+                          onPress={() => navigateToProperty(property.id)}
+                          style={({ pressed }) => [
+                            styles.voirToutInfo,
+                            pressed && { opacity: 0.7 },
+                          ]}
+                        >
                           <View style={styles.voirToutInfoHeader}>
                             <Text style={styles.voirToutTitle} numberOfLines={1}>
                               {property.title}
@@ -2391,8 +2479,8 @@ const SearchScreen: React.FC = () => {
                             <Text style={styles.voirToutPriceBold}>{displayed.amountText}</Text>
                             <Text style={styles.voirToutPriceLabel}> {displayed.labelText}</Text>
                           </Text>
-                        </View>
-                      </Pressable>
+                        </Pressable>
+                      </View>
                     );
                   })}
 
